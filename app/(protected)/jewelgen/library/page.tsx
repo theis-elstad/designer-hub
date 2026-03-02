@@ -6,6 +6,14 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import {
   getRefCategories,
@@ -33,6 +41,11 @@ export default function JewelGenLibraryPage() {
   const [addingParent, setAddingParent] = useState(false)
   const [addingChild, setAddingChild] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: 'category' | 'subcategory' | 'image'
+    id: string
+    name: string
+  } | null>(null)
 
   const loadCategories = useCallback(async () => {
     try {
@@ -122,28 +135,41 @@ export default function JewelGenLibraryPage() {
     }
   }
 
-  const handleDeleteParent = async (id: string) => {
-    try {
-      await deleteRefCategory(id)
-      if (selectedParent === id) {
-        setSelectedParent(null)
-        setSelectedChild(null)
-      }
-      await loadCategories()
-      toast.success('Category deleted')
-    } catch {
-      toast.error('Failed to delete category')
-    }
+  const handleDeleteParent = (id: string, name: string) => {
+    setConfirmDelete({ type: 'category', id, name })
   }
 
-  const handleDeleteChild = async (id: string) => {
+  const handleDeleteChild = (id: string, name: string) => {
+    setConfirmDelete({ type: 'subcategory', id, name })
+  }
+
+  const handleDeleteImage = (id: string, label: string) => {
+    setConfirmDelete({ type: 'image', id, name: label })
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return
+    const { type, id } = confirmDelete
+    setConfirmDelete(null)
     try {
-      await deleteRefCategory(id)
-      if (selectedChild === id) setSelectedChild(null)
-      await loadCategories()
-      toast.success('Sub-category deleted')
+      if (type === 'image') {
+        await deleteRefImage(id)
+        setImages((prev) => prev.filter((i) => i.id !== id))
+        toast.success('Image deleted')
+      } else {
+        await deleteRefCategory(id)
+        if (type === 'category' && selectedParent === id) {
+          setSelectedParent(null)
+          setSelectedChild(null)
+        }
+        if (type === 'subcategory' && selectedChild === id) {
+          setSelectedChild(null)
+        }
+        await loadCategories()
+        toast.success(type === 'category' ? 'Category deleted' : 'Sub-category deleted')
+      }
     } catch {
-      toast.error('Failed to delete sub-category')
+      toast.error(`Failed to delete ${type}`)
     }
   }
 
@@ -171,16 +197,6 @@ export default function JewelGenLibraryPage() {
     } finally {
       setUploading(false)
       e.target.value = ''
-    }
-  }
-
-  const handleDeleteImage = async (id: string) => {
-    try {
-      await deleteRefImage(id)
-      setImages((prev) => prev.filter((i) => i.id !== id))
-      toast.success('Image deleted')
-    } catch {
-      toast.error('Failed to delete image')
     }
   }
 
@@ -235,7 +251,7 @@ export default function JewelGenLibraryPage() {
               </button>
               <button
                 type="button"
-                onClick={() => handleDeleteParent(cat.id)}
+                onClick={() => handleDeleteParent(cat.id, cat.name)}
                 className="hidden rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:inline-flex"
               >
                 <Trash2 className="h-3 w-3" />
@@ -286,7 +302,7 @@ export default function JewelGenLibraryPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteChild(child.id)}
+                  onClick={() => handleDeleteChild(child.id, child.name)}
                   className="hidden rounded-full p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:inline-flex"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -372,7 +388,7 @@ export default function JewelGenLibraryPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleDeleteImage(img.id)}
+                      onClick={() => handleDeleteImage(img.id, img.label || 'this image')}
                       className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-destructive p-1 text-destructive-foreground shadow-sm group-hover:block"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -384,6 +400,29 @@ export default function JewelGenLibraryPage() {
           )}
         </div>
       )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!confirmDelete} onOpenChange={() => setConfirmDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete {confirmDelete?.type === 'image' ? 'image' : confirmDelete?.type === 'subcategory' ? 'sub-category' : 'category'}?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-medium text-foreground">{confirmDelete?.name}</span>?{' '}
+              {confirmDelete?.type === 'category' && 'All sub-categories and images within it will also be deleted. '}
+              {confirmDelete?.type === 'subcategory' && 'All images within it will also be deleted. '}
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -11,6 +11,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { FeedbackRow } from '@/lib/actions/feedback'
 
 interface FeedbackTableProps {
@@ -81,12 +87,24 @@ export function FeedbackTable({ rows }: FeedbackTableProps) {
                     </TableCell>
                     <TableCell className="max-w-xs">
                       {row.judgeComment ? (
-                        <div className="flex items-start gap-1.5">
-                          <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
-                          <span className="text-sm text-gray-700 line-clamp-2">
-                            {row.judgeComment}
-                          </span>
-                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-start gap-1.5 cursor-pointer">
+                                <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                                <span className="text-sm text-gray-700 line-clamp-2">
+                                  {row.judgeComment}
+                                </span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="top"
+                              className="max-w-sm bg-white text-gray-800 text-sm border border-gray-200 shadow-lg p-3"
+                            >
+                              {row.judgeComment}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       ) : row.productivity !== null ? (
                         <span className="text-xs text-gray-400">No feedback</span>
                       ) : (
