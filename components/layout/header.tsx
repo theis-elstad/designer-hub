@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LogOut, Upload, Trophy, Gavel, LayoutDashboard, Users, Camera, Home, ShieldCheck, ChevronDown, MessageSquare } from 'lucide-react'
+import { LogOut, Upload, Trophy, Gavel, LayoutDashboard, Users, Camera, Home, ShieldCheck, ChevronDown, MessageSquare, ClipboardList } from 'lucide-react'
 import { logout } from '@/lib/actions/auth'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,6 +26,7 @@ const navItems = [
   { href: '/submit', label: 'Submit', icon: Upload },
   { href: '/feedback', label: 'Feedback', icon: MessageSquare },
   { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+  { href: '/overdue', label: 'Asana', icon: ClipboardList },
 ]
 
 const adminNavItems = [
