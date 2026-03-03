@@ -103,7 +103,7 @@ export function SubmissionForm({
         toast.error(result.error)
       } else {
         setIsCompleted(completed)
-        toast.success(completed ? 'Submission marked as done!' : 'Submission reopened')
+        toast.success(completed ? 'Submitted for review!' : 'Submission reopened')
       }
     } finally {
       setIsMarkingComplete(false)
@@ -146,8 +146,18 @@ export function SubmissionForm({
         {showSuccess && (
           <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg">
             <CheckCircle className="h-5 w-5" />
-            <span>Your assets have been submitted for review!</span>
+            <span>Assets uploaded and saved!</span>
           </div>
+        )}
+
+        <ImageDropzone
+          userId={userId}
+          onUploadComplete={handleUploadComplete}
+          disabled={isPending}
+        />
+
+        {hasSubmitted && existingAssets.length > 0 && (
+          <ExistingAssets assets={existingAssets} />
         )}
 
         {/* Comment section */}
@@ -188,24 +198,6 @@ export function SubmissionForm({
           )}
         </div>
 
-        {hasSubmitted && existingAssets.length > 0 && (
-          <ExistingAssets assets={existingAssets} />
-        )}
-
-        <ImageDropzone
-          userId={userId}
-          onUploadComplete={handleUploadComplete}
-          disabled={isPending}
-        />
-
-        {hasSubmitted && (
-          <p className="text-sm text-gray-500 text-center">
-            {isToday
-              ? "You've already submitted today. You can still add more assets above."
-              : 'You have existing submissions for this date. You can add more assets above.'}
-          </p>
-        )}
-
         {/* Mark as Done / Done status */}
         {hasSubmitted && existingAssets.length > 0 && (
           <div className="pt-2 border-t">
@@ -213,7 +205,7 @@ export function SubmissionForm({
               <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                 <div className="flex items-center gap-2 text-green-700">
                   <CircleCheck className="h-5 w-5" />
-                  <span className="text-sm font-medium">Marked as done — ready for review</span>
+                  <span className="text-sm font-medium">Submitted — ready for review</span>
                 </div>
                 <Button
                   variant="ghost"
@@ -246,7 +238,7 @@ export function SubmissionForm({
                 ) : (
                   <>
                     <CircleCheck className="mr-2 h-4 w-4" />
-                    Mark as Done
+                    Submit — I'm done for today
                   </>
                 )}
               </Button>
