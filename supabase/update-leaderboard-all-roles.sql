@@ -69,7 +69,7 @@ BEGIN
             r.productivity,
             r.quality
         FROM public.submissions s
-        JOIN public.ratings r ON r.submission_id = s.id
+        LEFT JOIN public.ratings r ON r.submission_id = s.id
         WHERE s.submission_date >= start_date AND s.submission_date <= end_date
     ),
     asset_counts AS (

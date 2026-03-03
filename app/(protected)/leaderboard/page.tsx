@@ -96,12 +96,17 @@ async function LeaderboardData({
     if (range === 'weekly') {
       const lastDayEntry = lastBizDay.find((p) => p.user_id === entry.user_id)
       if (lastDayEntry) {
-        last_day_added = lastDayEntry.avg_total_score
+        // Always show asset counts for submitters
         daily_static_count = lastDayEntry.static_count
         daily_video_count = lastDayEntry.video_count
-        daily_avg_productivity = lastDayEntry.avg_productivity
-        daily_avg_quality = lastDayEntry.avg_quality
-        daily_avg_total = lastDayEntry.avg_total_score
+        // Only populate score columns if the submission has been rated
+        // (avg_total_score > 0 means at least one rating exists; unrated = 0 due to COALESCE)
+        if (lastDayEntry.avg_total_score > 0) {
+          last_day_added = lastDayEntry.avg_total_score
+          daily_avg_productivity = lastDayEntry.avg_productivity
+          daily_avg_quality = lastDayEntry.avg_quality
+          daily_avg_total = lastDayEntry.avg_total_score
+        }
       }
     }
 
