@@ -108,7 +108,7 @@ export async function POST(request: Request) {
         productContext = `Product Name: ${shopifyProduct.title}
 Type: ${shopifyProduct.product_type}
 Vendor: ${shopifyProduct.vendor}
-Tags: ${shopifyProduct.tags.join(', ')}
+Tags: ${Array.isArray(shopifyProduct.tags) ? shopifyProduct.tags.join(', ') : (shopifyProduct.tags || '')}
 Variants & Pricing: ${variantSummary}
 Description: ${description}`
       }
