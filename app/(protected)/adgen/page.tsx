@@ -19,13 +19,11 @@ import {
   BookmarkPlus,
   Copy,
   ExternalLink,
-  SkipForward,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -634,133 +632,10 @@ export default function AdGenPage() {
     }
   }, [state.brandUrl, state.productUrl])
 
-  // Skip research and jump to ideas with a manual brief
-  const skipToIdeas = useCallback(async (brandName: string, productName: string, brief: string) => {
-    const abort = new AbortController()
-    abortRef.current = abort
-
-    const syntheticBrand: BrandResearch = {
-      brandName,
-      industry: 'Not specified',
-      targetAudience: brief,
-      valueProposition: brief,
-      brandVoice: 'Professional',
-      keyMessages: [brief],
-      competitiveAdvantages: [],
-      productCategories: [productName],
-      pricePoint: 'mid-range',
-      brandPersonality: [],
-    }
-
-    const syntheticProduct: ProductResearch = {
-      productName,
-      productType: 'Not specified',
-      price: 'Not specified',
-      targetCustomer: brief,
-      keyBenefits: [brief],
-      painPointsSolved: [],
-      uniqueSellingPoints: [brief],
-      useCases: [],
-      competitiveContext: '',
-      emotionalTriggers: [],
-    }
-
-    setState(prev => ({
-      ...prev,
-      brandUrl: brandName,
-      productUrl: productName,
-      pipelineRunning: true,
-      autoAdvance: true,
-      expandedStage: null,
-      brand: { status: 'done', data: syntheticBrand, cached: false },
-      product: { status: 'done', data: syntheticProduct },
-      ideas: { status: 'idle', data: null, selected: new Set() },
-      copy: { status: 'idle', data: null },
-      creative: { status: 'idle', data: null },
-    }))
-
-    try {
-      // Jump straight to ideas
-      setState(prev => ({ ...prev, ideas: { ...prev.ideas, status: 'running' } }))
-      const ideasResult = await fetchAdIdeas(syntheticBrand, syntheticProduct)
-      if (abort.signal.aborted) return
-      const autoSelected = new Set<number>([0, 1, 2].filter(i => i < ideasResult.ideas.length))
-      setState(prev => ({
-        ...prev,
-        ideas: { status: 'done', data: ideasResult.ideas, selected: autoSelected },
-      }))
-
-      const waitForAutoAdvance = (): Promise<void> =>
-        new Promise(resolve => {
-          const check = () => {
-            setState(prev => {
-              if (prev.autoAdvance) resolve()
-              else setTimeout(check, 200)
-              return prev
-            })
-          }
-          check()
-        })
-
-      // Stage 4: Ad Copy
-      await waitForAutoAdvance()
-      if (abort.signal.aborted) return
-      setState(prev => ({ ...prev, copy: { ...prev.copy, status: 'running' } }))
-      const selectedIdeas = Array.from(autoSelected).map(i => ideasResult.ideas[i])
-      const copyResults = await Promise.all(
-        selectedIdeas.map(async idea => {
-          const result = await fetchAdCopy(idea, syntheticBrand, syntheticProduct)
-          return { idea, copy: result.copy }
-        })
-      )
-      if (abort.signal.aborted) return
-      setState(prev => ({ ...prev, copy: { status: 'done', data: copyResults } }))
-
-      // Stage 5: Ad Creatives
-      await waitForAutoAdvance()
-      if (abort.signal.aborted) return
-      setState(prev => ({ ...prev, creative: { ...prev.creative, status: 'running' } }))
-      const creatives: AdCreative[] = []
-      for (const { idea, copy } of copyResults) {
-        if (abort.signal.aborted) return
-        const creative = await fetchAdCreative(idea, copy, syntheticBrand, syntheticProduct)
-        creatives.push(creative)
-        setState(prev => ({ ...prev, creative: { ...prev.creative, data: [...creatives] } }))
-      }
-      if (abort.signal.aborted) return
-      setState(prev => ({
-        ...prev,
-        creative: { status: 'done', data: creatives },
-        pipelineRunning: false,
-        expandedStage: 'creative',
-      }))
-    } catch (err) {
-      if (abort.signal.aborted) return
-      const msg = err instanceof Error ? err.message : 'Pipeline failed'
-      toast.error(msg)
-      setState(prev => {
-        const next = { ...prev, pipelineRunning: false }
-        const stages: StageId[] = ['ideas', 'copy', 'creative']
-        for (const s of stages) {
-          if ((next as any)[s].status === 'running') {
-            (next as any)[s] = { ...(next as any)[s], status: 'error', error: msg }
-            next.expandedStage = s
-            break
-          }
-        }
-        return next
-      })
-    }
-  }, [])
-
   // ─── Input form (shown when pipeline hasn't started) ─────────────────────
 
   const [inputBrand, setInputBrand] = useState('')
   const [inputProduct, setInputProduct] = useState('')
-  const [quickMode, setQuickMode] = useState(false)
-  const [inputBrandName, setInputBrandName] = useState('')
-  const [inputProductName, setInputProductName] = useState('')
-  const [inputBrief, setInputBrief] = useState('')
 
   const hasStarted = currentStageIndex >= 0
 
@@ -778,110 +653,45 @@ export default function AdGenPage() {
       {!hasStarted && (
         <Card className="mb-6">
           <CardContent className="p-5 space-y-4">
-            {/* Mode toggle */}
-            <div className="flex gap-1 p-0.5 bg-gray-100 rounded-lg w-fit">
-              <button
-                onClick={() => setQuickMode(false)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                  !quickMode ? 'bg-white shadow-sm font-medium text-gray-900' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                From URL
-              </button>
-              <button
-                onClick={() => setQuickMode(true)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all flex items-center gap-1.5 ${
-                  quickMode ? 'bg-white shadow-sm font-medium text-gray-900' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <SkipForward className="w-3.5 h-3.5" /> Quick Brief
-              </button>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Brand or Product URL</label>
+              <Input
+                placeholder="e.g. gymshark.com or gymshark.com/products/vital-leggings"
+                value={inputBrand}
+                onChange={e => setInputBrand(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && inputBrand.trim()) {
+                    runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
+                  }
+                }}
+                className="text-base"
+                autoFocus
+              />
             </div>
-
-            {!quickMode ? (
-              <>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">Brand or Product URL</label>
-                  <Input
-                    placeholder="e.g. gymshark.com or gymshark.com/products/vital-leggings"
-                    value={inputBrand}
-                    onChange={e => setInputBrand(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && inputBrand.trim()) {
-                        runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
-                      }
-                    }}
-                    className="text-base"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                    Product URL <span className="text-gray-400 font-normal">(optional — if different from above)</span>
-                  </label>
-                  <Input
-                    placeholder="e.g. gymshark.com/products/vital-seamless-2-0-leggings"
-                    value={inputProduct}
-                    onChange={e => setInputProduct(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && inputBrand.trim()) {
-                        runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  onClick={() => runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)}
-                  disabled={!inputBrand.trim()}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Generate Ad Creatives
-                </Button>
-              </>
-            ) : (
-              <>
-                <p className="text-xs text-gray-500">Skip research — describe your brand and product to jump straight to ad ideas.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">Brand Name</label>
-                    <Input
-                      placeholder="e.g. Gymshark"
-                      value={inputBrandName}
-                      onChange={e => setInputBrandName(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 block">Product Name</label>
-                    <Input
-                      placeholder="e.g. Vital Seamless Leggings"
-                      value={inputProductName}
-                      onChange={e => setInputProductName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1.5 block">Brief</label>
-                  <Textarea
-                    placeholder="Describe the product, target audience, and what you want to highlight..."
-                    value={inputBrief}
-                    onChange={e => setInputBrief(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-                <Button
-                  onClick={() => skipToIdeas(inputBrandName.trim(), inputProductName.trim(), inputBrief.trim())}
-                  disabled={!inputBrandName.trim() || !inputProductName.trim() || !inputBrief.trim()}
-                  className="w-full"
-                  size="lg"
-                >
-                  <SkipForward className="w-4 h-4 mr-2" />
-                  Skip to Ad Ideas
-                </Button>
-              </>
-            )}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                Product URL <span className="text-gray-400 font-normal">(optional — if different from above)</span>
+              </label>
+              <Input
+                placeholder="e.g. gymshark.com/products/vital-seamless-2-0-leggings"
+                value={inputProduct}
+                onChange={e => setInputProduct(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && inputBrand.trim()) {
+                    runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
+                  }
+                }}
+              />
+            </div>
+            <Button
+              onClick={() => runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)}
+              disabled={!inputBrand.trim()}
+              className="w-full"
+              size="lg"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate Ad Creatives
+            </Button>
           </CardContent>
         </Card>
       )}
