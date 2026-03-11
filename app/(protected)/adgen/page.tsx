@@ -324,6 +324,18 @@ function StageLoadingSkeleton() {
   )
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function isValidUrl(str: string): boolean {
+  if (!str.trim()) return false
+  try {
+    new URL(str.startsWith('http') ? str : `https://${str}`)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function AdGenPage() {
@@ -634,8 +646,25 @@ export default function AdGenPage() {
 
   // ─── Input form (shown when pipeline hasn't started) ─────────────────────
 
-  const [inputBrand, setInputBrand] = useState('')
-  const [inputProduct, setInputProduct] = useState('')
+  const [urls, setUrls] = useState<string[]>([''])
+
+  const updateUrl = useCallback((index: number, value: string) => {
+    setUrls(prev => {
+      const next = [...prev]
+      next[index] = value
+      // Remove trailing empty slots that no longer follow a valid URL
+      while (next.length > 1 && next[next.length - 1] === '' && !isValidUrl(next[next.length - 2]?.trim())) {
+        next.pop()
+      }
+      // Add a new empty slot when the last one becomes valid (max 5)
+      if (isValidUrl(next[next.length - 1]?.trim()) && next.length < 5) {
+        next.push('')
+      }
+      return next
+    })
+  }, [])
+
+  const validUrls = urls.filter(u => isValidUrl(u.trim())).map(u => u.trim())
 
   const hasStarted = currentStageIndex >= 0
 
@@ -652,40 +681,25 @@ export default function AdGenPage() {
       {/* Input area — always visible when pipeline hasn't started */}
       {!hasStarted && (
         <Card className="mb-6">
-          <CardContent className="p-5 space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Brand or Product URL</label>
+          <CardContent className="p-5 space-y-3">
+            {urls.map((url, i) => (
               <Input
-                placeholder="e.g. gymshark.com or gymshark.com/products/vital-leggings"
-                value={inputBrand}
-                onChange={e => setInputBrand(e.target.value)}
+                key={i}
+                placeholder={i === 0 ? 'Paste a URL...' : 'Add another URL...'}
+                value={url}
+                onChange={e => updateUrl(i, e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && inputBrand.trim()) {
-                    runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
+                  if (e.key === 'Enter' && validUrls.length > 0) {
+                    runPipeline(validUrls[0], validUrls[1])
                   }
                 }}
                 className="text-base"
-                autoFocus
+                autoFocus={i === 0}
               />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                Product URL <span className="text-gray-400 font-normal">(optional — if different from above)</span>
-              </label>
-              <Input
-                placeholder="e.g. gymshark.com/products/vital-seamless-2-0-leggings"
-                value={inputProduct}
-                onChange={e => setInputProduct(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && inputBrand.trim()) {
-                    runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)
-                  }
-                }}
-              />
-            </div>
+            ))}
             <Button
-              onClick={() => runPipeline(inputBrand.trim(), inputProduct.trim() || undefined)}
-              disabled={!inputBrand.trim()}
+              onClick={() => runPipeline(validUrls[0], validUrls[1])}
+              disabled={validUrls.length === 0}
               className="w-full"
               size="lg"
             >
@@ -943,8 +957,7 @@ export default function AdGenPage() {
             variant="outline"
             onClick={() => {
               setState(initialState)
-              setInputBrand('')
-              setInputProduct('')
+              setUrls([''])
             }}
           >
             <Sparkles className="w-4 h-4 mr-2" /> Start New Generation
