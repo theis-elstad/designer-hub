@@ -13,8 +13,6 @@ import {
   Image,
   Check,
   RefreshCw,
-  Play,
-  Pause,
   Download,
   BookmarkPlus,
   Copy,
@@ -108,7 +106,6 @@ interface PipelineState {
   ideas: { status: StageStatus; data: AdIdea[] | null; selected: Set<number>; error?: string }
   copy: { status: StageStatus; data: Array<{ idea: AdIdea; copy: AdCopy }> | null; error?: string }
   creative: { status: StageStatus; data: AdCreative[] | null; error?: string }
-  autoAdvance: boolean
   expandedStage: StageId | null
   pipelineRunning: boolean
 }
@@ -121,7 +118,6 @@ const initialState: PipelineState = {
   ideas: { status: 'idle', data: null, selected: new Set() },
   copy: { status: 'idle', data: null },
   creative: { status: 'idle', data: null },
-  autoAdvance: true,
   expandedStage: null,
   pipelineRunning: false,
 }
@@ -374,20 +370,10 @@ export default function AdGenPage() {
 
   // Toggle stage expansion
   const toggleStage = useCallback((stageId: StageId) => {
-    setState(prev => {
-      const wasExpanded = prev.expandedStage === stageId
-      return {
-        ...prev,
-        expandedStage: wasExpanded ? null : stageId,
-        // Pausing auto-advance when expanding a completed stage
-        autoAdvance: wasExpanded ? true : (prev[stageId]?.status === 'done' ? false : prev.autoAdvance),
-      }
-    })
-  }, [])
-
-  // Resume auto-advance
-  const resumeAutoAdvance = useCallback(() => {
-    setState(prev => ({ ...prev, autoAdvance: true, expandedStage: null }))
+    setState(prev => ({
+      ...prev,
+      expandedStage: prev.expandedStage === stageId ? null : stageId,
+    }))
   }, [])
 
   // ─── Pipeline runner ─────────────────────────────────────────────────────
@@ -401,7 +387,6 @@ export default function AdGenPage() {
       brandUrl,
       productUrl: productUrl || prev.productUrl,
       pipelineRunning: true,
-      autoAdvance: true,
       expandedStage: null,
       // Reset all stages
       brand: { status: 'idle', data: null, cached: false },
@@ -422,27 +407,8 @@ export default function AdGenPage() {
       }))
       if (brandResult.cached) toast.info('Using cached brand research')
 
-      // Wait for auto-advance
-      const waitForAutoAdvance = (): Promise<void> =>
-        new Promise(resolve => {
-          const check = () => {
-            // Read latest state
-            setState(prev => {
-              if (prev.autoAdvance) {
-                resolve()
-              } else {
-                setTimeout(check, 200)
-              }
-              return prev
-            })
-          }
-          check()
-        })
-
       // Stage 2: Product Research
-      await waitForAutoAdvance()
       if (abort.signal.aborted) return
-      // Use product URL — if not provided, derive from brand URL
       const pUrl = productUrl || brandUrl
       setState(prev => ({ ...prev, productUrl: pUrl, product: { ...prev.product, status: 'running' } }))
       const productResult = await fetchProductResearch(pUrl)
@@ -453,12 +419,10 @@ export default function AdGenPage() {
       }))
 
       // Stage 3: Ad Ideas
-      await waitForAutoAdvance()
       if (abort.signal.aborted) return
       setState(prev => ({ ...prev, ideas: { ...prev.ideas, status: 'running' } }))
       const ideasResult = await fetchAdIdeas(brandResult.research, productResult.research)
       if (abort.signal.aborted) return
-      // Auto-select the first 3 ideas in auto-advance mode
       const autoSelected = new Set<number>([0, 1, 2].filter(i => i < ideasResult.ideas.length))
       setState(prev => ({
         ...prev,
@@ -466,7 +430,6 @@ export default function AdGenPage() {
       }))
 
       // Stage 4: Ad Copy (for selected ideas)
-      await waitForAutoAdvance()
       if (abort.signal.aborted) return
       setState(prev => ({ ...prev, copy: { ...prev.copy, status: 'running' } }))
       const selectedIdeas = Array.from(autoSelected).map(i => ideasResult.ideas[i])
@@ -483,7 +446,6 @@ export default function AdGenPage() {
       }))
 
       // Stage 5: Ad Creatives
-      await waitForAutoAdvance()
       if (abort.signal.aborted) return
       setState(prev => ({ ...prev, creative: { ...prev.creative, status: 'running' } }))
       const creatives: AdCreative[] = []
@@ -491,7 +453,6 @@ export default function AdGenPage() {
         if (abort.signal.aborted) return
         const creative = await fetchAdCreative(idea, copy, brandResult.research, productResult.research)
         creatives.push(creative)
-        // Show each creative as it arrives
         setState(prev => ({
           ...prev,
           creative: { ...prev.creative, data: [...creatives] },
@@ -502,7 +463,7 @@ export default function AdGenPage() {
         ...prev,
         creative: { status: 'done', data: creatives },
         pipelineRunning: false,
-        expandedStage: 'creative', // auto-expand final stage
+        expandedStage: 'creative',
       }))
 
     } catch (err) {
@@ -710,30 +671,6 @@ export default function AdGenPage() {
         </Card>
       )}
 
-      {/* Auto-advance control bar */}
-      {hasStarted && state.pipelineRunning && (
-        <div className="flex items-center justify-between mb-4 px-1">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            {state.autoAdvance ? (
-              <>
-                <Play className="w-3.5 h-3.5 text-green-600" />
-                <span>Auto-advancing</span>
-              </>
-            ) : (
-              <>
-                <Pause className="w-3.5 h-3.5 text-amber-600" />
-                <span>Paused — reviewing stage</span>
-              </>
-            )}
-          </div>
-          {!state.autoAdvance && (
-            <Button variant="outline" size="sm" onClick={resumeAutoAdvance}>
-              <Play className="w-3 h-3 mr-1" /> Continue Pipeline
-            </Button>
-          )}
-        </div>
-      )}
-
       {/* Pipeline stages */}
       {hasStarted && (
         <div className="space-y-3">
@@ -848,17 +785,9 @@ export default function AdGenPage() {
                         </button>
                       ))}
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => rerunStage('ideas')}>
-                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Regenerate Ideas
-                      </Button>
-                      {!state.autoAdvance && state.ideas.selected.size > 0 && (
-                        <Button size="sm" onClick={resumeAutoAdvance}>
-                          Continue with {state.ideas.selected.size} idea{state.ideas.selected.size !== 1 ? 's' : ''}
-                          <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                        </Button>
-                      )}
-                    </div>
+                    <Button variant="outline" size="sm" onClick={() => rerunStage('ideas')}>
+                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Regenerate Ideas
+                    </Button>
                   </div>
                 )}
 
