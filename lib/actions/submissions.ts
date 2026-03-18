@@ -238,3 +238,43 @@ export async function markSubmissionComplete(submissionId: string, isCompleted: 
   revalidatePath('/judge', 'layout')
   return { success: true }
 }
+
+export async function saveTimeAllocation(date: string, allocation: '0-30' | '30-70' | '70-100') {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { error: 'Not authenticated' }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from('time_allocations') as any).upsert(
+    {
+      user_id: user.id,
+      allocation_date: date,
+      allocation,
+    },
+    { onConflict: 'user_id,allocation_date' }
+  )
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function getTimeAllocation(date: string): Promise<string | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('time_allocations')
+    .select('allocation')
+    .eq('user_id', user.id)
+    .eq('allocation_date', date)
+    .single()
+
+  return (data as { allocation: string } | null)?.allocation || null
+}

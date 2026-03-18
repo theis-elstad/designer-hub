@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { CheckCircle, Loader2, Save, CalendarOff, CircleCheck, Undo2 } from 'lucide-react'
 import { ImageDropzone, type UploadedFileInfo } from './image-dropzone'
 import { ExistingAssets } from './existing-assets'
-import { createSubmission, updateComment, markSubmissionComplete } from '@/lib/actions/submissions'
+import { createSubmission, updateComment, markSubmissionComplete, saveTimeAllocation, getTimeAllocation } from '@/lib/actions/submissions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ export function SubmissionForm({
   const [isPending, startTransition] = useTransition()
   const [isSavingComment, setIsSavingComment] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [timeAllocation, setTimeAllocation] = useState<string | null>(null)
 
   // Reset state when date changes
   useEffect(() => {
@@ -53,6 +54,8 @@ export function SubmissionForm({
     setSubmissionId(initialSubmissionId)
     setIsCompleted(initialIsCompleted)
     setShowSuccess(false)
+    // Load existing time allocation
+    getTimeAllocation(selectedDate).then(setTimeAllocation)
   }, [selectedDate, initialHasSubmitted, initialExistingAssets, initialComment, initialSubmissionId, initialIsCompleted])
 
   const commentChanged = comment !== savedComment
@@ -202,6 +205,33 @@ export function SubmissionForm({
             </Button>
           )}
         </div>
+
+        {/* Time allocation */}
+        {hasSubmitted && existingAssets.length > 0 && (
+          <div className="space-y-2">
+            <Label htmlFor="time-allocation" className="text-sm font-medium">
+              How much of your day was on ad creation?
+            </Label>
+            <select
+              id="time-allocation"
+              value={timeAllocation || ''}
+              onChange={async (e) => {
+                const value = e.target.value as '0-30' | '30-70' | '70-100'
+                setTimeAllocation(value)
+                const result = await saveTimeAllocation(selectedDate, value)
+                if (result.error) {
+                  toast.error(result.error)
+                }
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="" disabled>Select...</option>
+              <option value="0-30">Less than 30%</option>
+              <option value="30-70">30-70%</option>
+              <option value="70-100">70-100% (full day)</option>
+            </select>
+          </div>
+        )}
 
         {/* Mark as Done / Done status */}
         {hasSubmitted && existingAssets.length > 0 && (

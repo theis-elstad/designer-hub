@@ -1,19 +1,15 @@
 'use client'
 
 import { useRef, useCallback } from 'react'
-import { format, getISOWeek } from 'date-fns'
-import { Trophy, Download, Medal, Image, EyeOff, ScissorsLineDashed } from 'lucide-react'
+import { Trophy, Download, Medal, ScissorsLineDashed } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn, getAvatarUrl } from '@/lib/utils'
 import type { LeaderboardEntry } from '@/lib/types/database'
-import type { TimeRange } from './time-range-toggle'
 
 interface LeaderboardPodiumProps {
   entries: LeaderboardEntry[]
   isAdmin: boolean
-  currentRange: TimeRange
-  weekOffset?: number
 }
 
 function formatScore(score: number) {
@@ -22,187 +18,37 @@ function formatScore(score: number) {
 
 function getInitials(name: string | null) {
   if (!name) return '?'
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-}
-
-function getLastBusinessDay(): Date {
-  const today = new Date()
-  const dow = today.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-  let offset: number
-  if (dow === 0) offset = 2       // Sunday -> Friday
-  else if (dow === 1) offset = 3  // Monday -> Friday
-  else if (dow === 6) offset = 1  // Saturday -> Friday
-  else offset = 1                 // Tue-Fri -> previous day
-  const d = new Date(today)
-  d.setDate(d.getDate() - offset)
-  return d
-}
-
-function getWeeklyFriday(weekOffset: number = 0): Date {
-  const today = new Date()
-  const dow = today.getDay()
-  const daysSinceFriday = ((dow - 5) + 7) % 7
-  const friday = new Date(today)
-  friday.setDate(friday.getDate() - daysSinceFriday + (weekOffset * 7))
-  return friday
-}
-
-function getWeeklyDayNumber(): number {
-  // Display as a normal Mon-Fri work week to spectators
-  // Mon = Day 1, Tue = Day 2, Wed = Day 3, Thu = Day 4, Fri = Day 5
-  // Sat/Sun show Day 5 (week complete)
-  const dow = new Date().getDay() // 0=Sun, 1=Mon, ..., 6=Sat
-  const dayMap: Record<number, number> = {
-    1: 1, // Monday -> Day 1
-    2: 2, // Tuesday -> Day 2
-    3: 3, // Wednesday -> Day 3
-    4: 4, // Thursday -> Day 4
-    5: 5, // Friday -> Day 5
-    6: 5, // Saturday -> Day 5 (week complete)
-    0: 5, // Sunday -> Day 5 (week complete)
-  }
-  return dayMap[dow]
-}
-
-function getRangeLabel(range: TimeRange, weekOffset: number = 0): string {
-  const today = new Date()
-  switch (range) {
-    case 'today':
-      return format(today, 'MMMM d, yyyy')
-    case 'yesterday': {
-      const yesterday = new Date(today)
-      yesterday.setDate(yesterday.getDate() - 1)
-      return format(yesterday, 'MMMM d, yyyy')
-    }
-    case 'last_business_day':
-      return format(getLastBusinessDay(), 'MMMM d, yyyy')
-    case 'weekly': {
-      const friday = getWeeklyFriday(weekOffset)
-      const thursday = new Date(friday)
-      thursday.setDate(thursday.getDate() + 6)
-      // Week number is based on the Thursday (end of cycle)
-      const weekNum = getISOWeek(thursday)
-      // Always show full Fri-Thu range
-      const sameMonth = friday.getMonth() === thursday.getMonth()
-      const dateRange = sameMonth
-        ? `${format(friday, 'MMM d')} - ${format(thursday, 'd')}`
-        : `${format(friday, 'MMM d')} - ${format(thursday, 'MMM d')}`
-      // Day number (only for current week)
-      const dayStr = weekOffset === 0 ? ` - Day ${getWeeklyDayNumber()}/5` : ''
-      return `Week ${weekNum} (${dateRange})${dayStr}`
-    }
-    case 'week':
-      return 'Last 7 Days'
-    case 'month':
-      return 'Last 30 Days'
-    case 'all':
-      return 'All Time'
-  }
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase()
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1) {
-    return (
-      <div className="flex items-center justify-center w-8 h-8 shrink-0">
-        <Medal className="h-6 w-6 text-yellow-500" />
-      </div>
-    )
-  }
-  if (rank === 2) {
-    return (
-      <div className="flex items-center justify-center w-8 h-8 shrink-0">
-        <Medal className="h-6 w-6 text-gray-400" />
-      </div>
-    )
-  }
-  if (rank === 3) {
-    return (
-      <div className="flex items-center justify-center w-8 h-8 shrink-0">
-        <Medal className="h-6 w-6 text-orange-400" />
-      </div>
-    )
-  }
-  return (
-    <div className="flex items-center justify-center w-8 h-8 shrink-0">
-      <span className="text-gray-500 font-medium">{rank}</span>
-    </div>
-  )
+  if (rank === 1) return <div className="flex items-center justify-center w-8 h-8 shrink-0"><Medal className="h-6 w-6 text-yellow-500" /></div>
+  if (rank === 2) return <div className="flex items-center justify-center w-8 h-8 shrink-0"><Medal className="h-6 w-6 text-gray-400" /></div>
+  if (rank === 3) return <div className="flex items-center justify-center w-8 h-8 shrink-0"><Medal className="h-6 w-6 text-orange-400" /></div>
+  return <div className="flex items-center justify-center w-8 h-8 shrink-0"><span className="text-gray-500 font-medium">{rank}</span></div>
 }
 
-export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset = 0 }: LeaderboardPodiumProps) {
+export function LeaderboardPodium({ entries, isAdmin }: LeaderboardPodiumProps) {
   const listRef = useRef<HTMLDivElement>(null)
-  const showCumulative = currentRange === 'weekly'
 
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     if (!listRef.current) return
-
     try {
       const htmlToImage = await import('html-to-image')
-
-      const dataUrl = await htmlToImage.toPng(listRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-      })
-
+      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
       const link = document.createElement('a')
-      link.download = `leaderboard-${new Date().toISOString().split('T')[0]}.png`
+      link.download = `leaderboard-total-${new Date().toISOString().split('T')[0]}.png`
       link.href = dataUrl
       link.click()
     } catch (error) {
       console.error('Failed to download leaderboard image:', error)
     }
-  }
-
-  const handleAnonymousDownload = useCallback(async () => {
-    if (!listRef.current) return
-
-    // Find all entry rows and blur avatar + name for the bottom half
-    const rows = listRef.current.querySelectorAll<HTMLElement>('[data-rank]')
-    const totalRows = rows.length
-    const blurFrom = Math.ceil(totalRows / 2)
-    const blurred: { el: HTMLElement; prev: string }[] = []
-
-    rows.forEach((row, index) => {
-      if (index >= blurFrom) {
-        row.querySelectorAll<HTMLElement>('[data-anon="blur"]').forEach((el) => {
-          blurred.push({ el, prev: el.style.filter })
-          el.style.filter = 'blur(12px)'
-        })
-      }
-    })
-
-    try {
-      const htmlToImage = await import('html-to-image')
-
-      const dataUrl = await htmlToImage.toPng(listRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-      })
-
-      const link = document.createElement('a')
-      link.download = `leaderboard-anon-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download anonymous leaderboard image:', error)
-    } finally {
-      // Restore original styles
-      blurred.forEach(({ el, prev }) => {
-        el.style.filter = prev
-      })
-    }
   }, [])
 
   const handleTopHalfDownload = useCallback(async () => {
     if (!listRef.current) return
-
     const rows = listRef.current.querySelectorAll<HTMLElement>('[data-rank]')
-    const totalRows = rows.length
-    const hideFrom = Math.ceil(totalRows / 2)
+    const hideFrom = Math.ceil(rows.length / 2)
     const hidden: { el: HTMLElement; prev: string }[] = []
 
     rows.forEach((row, index) => {
@@ -214,12 +60,7 @@ export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset =
 
     try {
       const htmlToImage = await import('html-to-image')
-
-      const dataUrl = await htmlToImage.toPng(listRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-      })
-
+      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
       const link = document.createElement('a')
       link.download = `leaderboard-top-half-${new Date().toISOString().split('T')[0]}.png`
       link.href = dataUrl
@@ -227,9 +68,7 @@ export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset =
     } catch (error) {
       console.error('Failed to download top-half leaderboard image:', error)
     } finally {
-      hidden.forEach(({ el, prev }) => {
-        el.style.display = prev
-      })
+      hidden.forEach(({ el, prev }) => { el.style.display = prev })
     }
   }, [])
 
@@ -247,11 +86,6 @@ export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset =
     <div className="space-y-6">
       {isAdmin && (
         <div className="flex justify-end gap-2">
-          {showCumulative && (
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleAnonymousDownload} title="Download with non-podium rows blurred">
-              <EyeOff className="h-4 w-4" />
-            </Button>
-          )}
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleTopHalfDownload} title="Download top half only">
             <ScissorsLineDashed className="h-4 w-4" />
           </Button>
@@ -262,72 +96,21 @@ export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset =
         </div>
       )}
 
-      <div
-        ref={listRef}
-        className="bg-white rounded-lg overflow-hidden"
-      >
+      <div ref={listRef} className="bg-white rounded-lg overflow-hidden">
         {/* Banner */}
         <div className="px-4 sm:px-6 py-4 bg-gray-900 text-white">
           <h2 className="text-lg font-bold">Designer Hub Leaderboard</h2>
-          <p className="text-sm text-gray-300">{getRangeLabel(currentRange, weekOffset)}</p>
+          <p className="text-sm text-gray-300">All Time</p>
         </div>
-
-        {/* Group headers (weekly only) */}
-        {showCumulative && (
-          <div className="flex items-center gap-4 px-4 sm:px-6 pt-3 pb-0 bg-gray-50">
-            {/* Spacer for rank + avatar + name (matches column header row) */}
-            <div className="w-8 shrink-0" />
-            <div className="w-9 shrink-0" />
-            <div className="flex-1 min-w-0" />
-            {/* Daily spacers + label (matches Statics, Video, Productivity, Quality, Added) */}
-            <div className="w-14 shrink-0" />
-            <div className="w-14 shrink-0" />
-            <div className="w-20 shrink-0" />
-            <div className="w-20 shrink-0" />
-            <div className="w-16 shrink-0 text-center">
-              <span className="text-xs font-bold text-red-600 uppercase tracking-wider">Daily</span>
-            </div>
-            {/* Weekly group label - spans Total, Average */}
-            <div className="flex items-center gap-4 ml-4 pl-4 border-l-2 border-gray-300">
-              <div className="w-24 shrink-0" />
-              <div className="w-20 shrink-0 text-center">
-                <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">Weekly</span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Column headers */}
         <div className="flex items-center gap-4 px-4 sm:px-6 py-3 border-b bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wide">
           <div className="w-8 shrink-0" />
           <div className="w-9 shrink-0" />
           <div className="flex-1 min-w-0">Name</div>
-          {showCumulative ? (
-            <>
-              {/* Daily columns */}
-              <div className="w-14 text-center shrink-0">
-                <div className="flex items-center justify-center gap-1">
-                  <Image className="h-3 w-3" />
-                  <span>Statics</span>
-                </div>
-              </div>
-              <div className="w-14 text-center shrink-0">Video</div>
-              <div className="w-20 text-center shrink-0">Productivity</div>
-              <div className="w-20 text-center shrink-0">Quality</div>
-              <div className="w-16 text-center shrink-0">Added</div>
-              {/* Weekly columns */}
-              <div className="flex items-center gap-4 ml-4 pl-4 border-l-2 border-gray-300">
-                <div className="w-24 text-center shrink-0">Total</div>
-                <div className="w-20 text-center shrink-0">Average</div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-20 text-center shrink-0">Productivity</div>
-              <div className="w-20 text-center shrink-0">Quality</div>
-              <div className="w-20 text-center shrink-0">Avg Total</div>
-            </>
-          )}
+          <div className="w-20 text-center shrink-0">Productivity</div>
+          <div className="w-20 text-center shrink-0">Quality</div>
+          <div className="w-20 text-center shrink-0">Avg Total</div>
         </div>
 
         {/* Entries */}
@@ -340,107 +123,42 @@ export function LeaderboardPodium({ entries, isAdmin, currentRange, weekOffset =
               <div
                 key={entry.user_id}
                 data-rank={entry.rank}
-                className={cn(
-                  'flex items-center gap-4 px-4 sm:px-6 py-3',
-                  isTopThree && 'bg-gray-50/50'
-                )}
+                className={cn('flex items-center gap-4 px-4 sm:px-6 py-3', isTopThree && 'bg-gray-50/50')}
               >
-                {/* Rank */}
                 <RankBadge rank={entry.rank} />
 
-                {/* Avatar */}
                 <Avatar data-anon="blur" className={cn(
                   'h-9 w-9 shrink-0',
                   entry.rank === 1 && 'ring-2 ring-yellow-500',
                   entry.rank === 2 && 'ring-2 ring-gray-400',
                   entry.rank === 3 && 'ring-2 ring-orange-400',
                 )}>
-                  {avatarUrl && (
-                    <AvatarImage src={avatarUrl} alt={entry.full_name || 'Avatar'} />
-                  )}
-                  <AvatarFallback className="bg-gray-100 text-gray-600 text-sm">
-                    {getInitials(entry.full_name)}
-                  </AvatarFallback>
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt={entry.full_name || 'Avatar'} />}
+                  <AvatarFallback className="bg-gray-100 text-gray-600 text-sm">{getInitials(entry.full_name)}</AvatarFallback>
                 </Avatar>
 
-                {/* Name */}
                 <div data-anon="blur" className="flex-1 min-w-0">
-                  <p className={cn(
-                    'truncate',
-                    isTopThree ? 'font-semibold' : 'font-medium'
-                  )}>
+                  <p className={cn('truncate', isTopThree ? 'font-semibold' : 'font-medium')}>
                     {entry.full_name || 'Unknown'}
                   </p>
                 </div>
 
-                {showCumulative ? (
-                  <>
-                    {/* Daily group */}
-                    {/* Statics (last biz day) */}
-                    <div className="w-14 text-center shrink-0">
-                      <span className="text-gray-600 text-sm">{entry.daily_static_count || 0}</span>
-                    </div>
-
-                    {/* Video (last biz day) */}
-                    <div className="w-14 text-center shrink-0">
-                      <span className="text-gray-600 text-sm">{entry.daily_video_count || 0}</span>
-                    </div>
-
-                    {/* Productivity (last biz day) */}
-                    <div className="w-20 text-center shrink-0">
-                      <span className="text-gray-600">{entry.daily_avg_productivity != null ? formatScore(entry.daily_avg_productivity) : '–'}</span>
-                    </div>
-
-                    {/* Quality (last biz day) */}
-                    <div className="w-20 text-center shrink-0">
-                      <span className="text-gray-600">{entry.daily_avg_quality != null ? formatScore(entry.daily_avg_quality) : '–'}</span>
-                    </div>
-
-                    {/* Added (last biz day avg total score) */}
-                    <div className="w-16 text-center shrink-0">
-                      <span className="text-gray-700 font-medium text-sm">
-                        {entry.last_day_added ? `+${formatScore(entry.last_day_added)}` : '–'}
-                      </span>
-                    </div>
-
-                    {/* Weekly group */}
-                    <div className="flex items-center gap-4 ml-4 pl-4 border-l-2 border-gray-300">
-                      {/* Total (weekly cumulative) */}
-                      <div className="w-24 text-center shrink-0">
-                        <span className="text-gray-600 font-semibold">
-                          {formatScore(entry.cumulative_total_score || 0)}
-                        </span>
-                      </div>
-
-                      {/* Average (weekly) */}
-                      <div className="w-20 text-center shrink-0">
-                        <span className="font-bold text-lg text-gray-900">
-                          {formatScore(entry.avg_total_score)}
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* Non-weekly: simple layout */}
-                    <div className="w-20 text-center shrink-0">
-                      <span className="text-gray-600">{formatScore(entry.avg_productivity)}</span>
-                    </div>
-                    <div className="w-20 text-center shrink-0">
-                      <span className="text-gray-600">{formatScore(entry.avg_quality)}</span>
-                    </div>
-                    <div className="w-20 text-center shrink-0">
-                      <span className={cn(
-                        'font-bold text-lg',
-                        entry.rank === 1 && 'text-yellow-600',
-                        entry.rank === 2 && 'text-gray-600',
-                        entry.rank === 3 && 'text-orange-600',
-                      )}>
-                        {formatScore(entry.avg_total_score)}
-                      </span>
-                    </div>
-                  </>
-                )}
+                <div className="w-20 text-center shrink-0">
+                  <span className="text-gray-600">{formatScore(entry.avg_productivity)}</span>
+                </div>
+                <div className="w-20 text-center shrink-0">
+                  <span className="text-gray-600">{formatScore(entry.avg_quality)}</span>
+                </div>
+                <div className="w-20 text-center shrink-0">
+                  <span className={cn(
+                    'font-bold text-lg',
+                    entry.rank === 1 && 'text-yellow-600',
+                    entry.rank === 2 && 'text-gray-600',
+                    entry.rank === 3 && 'text-orange-600',
+                  )}>
+                    {formatScore(entry.avg_total_score)}
+                  </span>
+                </div>
               </div>
             )
           })}

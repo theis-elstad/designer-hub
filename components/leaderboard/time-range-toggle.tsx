@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-export type TimeRange = 'today' | 'yesterday' | 'last_business_day' | 'weekly' | 'week' | 'month' | 'all'
+export type TimeRange = 'today' | 'yesterday' | 'last_business_day' | 'daily' | 'weekly' | 'week' | 'month' | 'all'
 
 type TimeRangeOption = { value: TimeRange; label: string }
 

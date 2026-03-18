@@ -41,6 +41,7 @@ interface SubmissionDetailProps {
       file_name: string
     }[]
     suggestedProductivity?: number
+    timeAllocation?: string | null
     allRatings?: {
       ratedBy: string
       productivity: number
@@ -107,6 +108,11 @@ export function SubmissionDetail({ submission }: SubmissionDetailProps) {
             <Badge variant="outline" className="gap-1.5">
               <Video className="h-3.5 w-3.5" />
               {submission.videoCount} video
+            </Badge>
+          )}
+          {submission.timeAllocation && (
+            <Badge variant="outline" className="gap-1.5 bg-purple-50 text-purple-700 border-purple-200">
+              Ad time: {submission.timeAllocation === '0-30' ? '<30%' : submission.timeAllocation === '30-70' ? '30-70%' : '70-100%'}
             </Badge>
           )}
           {submission.status === 'rated' && (

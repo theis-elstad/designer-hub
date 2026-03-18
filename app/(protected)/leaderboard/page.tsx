@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { LeaderboardPodium } from '@/components/leaderboard/leaderboard-podium'
+import { WeeklyLeaderboard } from '@/components/leaderboard/weekly-leaderboard'
 import { MatrixChart } from '@/components/matrix/matrix-chart'
 import { TimeRangeToggle, type TimeRange } from '@/components/leaderboard/time-range-toggle'
 import { WeekNavigator } from '@/components/leaderboard/week-navigator'
@@ -16,50 +17,120 @@ interface LeaderboardPageProps {
   searchParams: Promise<{ range?: TimeRange; week_offset?: string; view?: View }>
 }
 
-async function LeaderboardData({
-  range,
-  isAdmin,
+function getWeekDays(weekOffset: number): { date: string; label: string }[] {
+  const today = new Date()
+  const dow = today.getDay()
+  const daysSinceFriday = ((dow - 5) + 7) % 7
+  const friday = new Date(today)
+  friday.setDate(friday.getDate() - daysSinceFriday + (weekOffset * 7))
+
+  // Week order: Fri, Mon, Tue, Wed, Thu
+  const offsets = [0, 3, 4, 5, 6] // days after Friday
+  const dayLabels = ['Fri', 'Mon', 'Tue', 'Wed', 'Thu']
+
+  return offsets.map((offset, i) => {
+    const d = new Date(friday)
+    d.setDate(d.getDate() + offset)
+    return {
+      date: d.toISOString().split('T')[0],
+      label: `${dayLabels[i]} ${d.getDate()}`
+    }
+  }).filter(d => new Date(d.date) <= today) // hide future days
+}
+
+function getWeekStartEnd(weekOffset: number): { start: string; end: string } {
+  const today = new Date()
+  const dow = today.getDay()
+  const daysSinceFriday = ((dow - 5) + 7) % 7
+  const friday = new Date(today)
+  friday.setDate(friday.getDate() - daysSinceFriday + (weekOffset * 7))
+  const thursday = new Date(friday)
+  thursday.setDate(thursday.getDate() + 6)
+  return {
+    start: friday.toISOString().split('T')[0],
+    end: thursday.toISOString().split('T')[0],
+  }
+}
+
+async function WeeklyLeaderboardData({
   weekOffset,
+  isAdmin,
 }: {
-  range: TimeRange
-  isAdmin: boolean
   weekOffset: number
+  isAdmin: boolean
 }) {
   const supabase = await createClient()
+  const weekDays = getWeekDays(weekOffset)
+  const { start: weekStartDate, end: weekEndDate } = getWeekStartEnd(weekOffset)
 
-  // Build RPC params
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rpcParams: any = { time_range: range }
-  if (range === 'weekly') {
-    rpcParams.week_offset = weekOffset
-  }
-
-  // Get current period leaderboard
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: currentLeaderboard } = await (supabase.rpc as any)('get_leaderboard', rpcParams)
-
-  // Get previous period for trend calculation (only for longer ranges)
-  let previousLeaderboard = null
-  if (range === 'week' || range === 'month') {
-    const previousRange = range === 'week' ? 'month' : 'week'
+  // Parallel RPC calls: one per visible day + one for full week
+  const dayPromises = weekDays.map((day) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase.rpc as any)('get_leaderboard', {
-      time_range: previousRange,
+    (supabase.rpc as any)('get_leaderboard', {
+      time_range: 'daily',
+      target_date: day.date,
     })
-    previousLeaderboard = data
-  }
+  )
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const weeklyPromise = (supabase.rpc as any)('get_leaderboard', {
+    time_range: 'weekly',
+    week_offset: weekOffset,
+  })
 
-  // For weekly view: fetch last business day scores (for "Added" column)
-  let lastBizDayLeaderboard = null
-  if (range === 'weekly') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase.rpc as any)('get_leaderboard', {
-      time_range: 'last_business_day',
-    })
-    lastBizDayLeaderboard = data
-  }
+  const [weeklyResult, ...dayResults] = await Promise.all([weeklyPromise, ...dayPromises])
 
-  // Fetch avatar paths for all users in the leaderboard
+  // Collect all user IDs for avatar fetching
+  const allUserIds = new Set<string>()
+  const weeklyData = weeklyResult.data || []
+  weeklyData.forEach((e: { user_id: string }) => allUserIds.add(e.user_id))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dayDataArrays = dayResults.map((r: any) => (r.data || []) as LeaderboardEntry[])
+  dayDataArrays.forEach((arr) =>
+    arr.forEach((e) => allUserIds.add(e.user_id))
+  )
+
+  // Fetch avatars
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, avatar_path')
+    .in('id', Array.from(allUserIds))
+
+  const avatarMap = new Map(
+    (profiles || []).map((p: { id: string; avatar_path: string | null }) => [p.id, p.avatar_path])
+  )
+
+  // Helper to add avatar_path to entries
+  const addAvatars = (entries: LeaderboardEntry[]): LeaderboardEntry[] =>
+    entries.map((e) => ({ ...e, avatar_path: avatarMap.get(e.user_id) || null }))
+
+  // Build week days with entries
+  const weekDaysWithEntries = weekDays.map((day, i) => ({
+    ...day,
+    entries: addAvatars(dayDataArrays[i] || []),
+  }))
+
+  const weeklyEntries = addAvatars(weeklyData)
+
+  return (
+    <WeeklyLeaderboard
+      weekDays={weekDaysWithEntries}
+      weeklyEntries={weeklyEntries}
+      weekOffset={weekOffset}
+      isAdmin={isAdmin}
+      weekStartDate={weekStartDate}
+      weekEndDate={weekEndDate}
+    />
+  )
+}
+
+async function TotalLeaderboardData({ isAdmin }: { isAdmin: boolean }) {
+  const supabase = await createClient()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: currentLeaderboard } = await (supabase.rpc as any)('get_leaderboard', {
+    time_range: 'all',
+  })
+
   const userIds = (currentLeaderboard || []).map((e: { user_id: string }) => e.user_id)
   const { data: profiles } = await supabase
     .from('profiles')
@@ -70,66 +141,14 @@ async function LeaderboardData({
     (profiles || []).map((p: { id: string; avatar_path: string | null }) => [p.id, p.avatar_path])
   )
 
-  // Type the raw data
-  type RawLeaderboardEntry = Omit<LeaderboardEntry, 'trend' | 'avatar_path' | 'avg_score_delta' | 'last_day_added'>
-  const current: RawLeaderboardEntry[] = currentLeaderboard || []
-  const previous: RawLeaderboardEntry[] = previousLeaderboard || []
-  const lastBizDay: RawLeaderboardEntry[] = lastBizDayLeaderboard || []
-
-  // Calculate trends by comparing ranks and add avatar paths
-  const leaderboardWithTrends: LeaderboardEntry[] = current.map((entry) => {
-    const previousEntry = previous.find((p) => p.user_id === entry.user_id)
-
-    let trend: 'up' | 'down' | 'same' = 'same'
-    if (previousEntry) {
-      if (entry.rank < previousEntry.rank) trend = 'up'
-      else if (entry.rank > previousEntry.rank) trend = 'down'
-    }
-
-    // Last biz day data: daily scores and asset counts
-    let last_day_added: number | undefined
-    let daily_static_count: number | undefined
-    let daily_video_count: number | undefined
-    let daily_avg_productivity: number | undefined
-    let daily_avg_quality: number | undefined
-    let daily_avg_total: number | undefined
-    if (range === 'weekly') {
-      const lastDayEntry = lastBizDay.find((p) => p.user_id === entry.user_id)
-      if (lastDayEntry) {
-        // Always show asset counts for submitters
-        daily_static_count = lastDayEntry.static_count
-        daily_video_count = lastDayEntry.video_count
-        // Only populate score columns if the submission has been rated
-        // (avg_total_score > 0 means at least one rating exists; unrated = 0 due to COALESCE)
-        if (lastDayEntry.avg_total_score > 0) {
-          last_day_added = lastDayEntry.avg_total_score
-          daily_avg_productivity = lastDayEntry.avg_productivity
-          daily_avg_quality = lastDayEntry.avg_quality
-          daily_avg_total = lastDayEntry.avg_total_score
-        }
-      }
-    }
-
-    // Avg score delta: how avg_total_score changed after last submission
-    // previous_avg = (cumulative - last_day_added) / (submissions - 1)
-    // delta = current_avg - previous_avg
-    let avg_score_delta: number | undefined
-    if (range === 'weekly' && last_day_added && entry.cumulative_total_score && entry.total_submissions > 1) {
-      const previousAvg = (entry.cumulative_total_score - last_day_added) / (entry.total_submissions - 1)
-      avg_score_delta = Math.round((entry.avg_total_score - previousAvg) * 10) / 10
-    }
-
-    return { ...entry, trend, avatar_path: avatarMap.get(entry.user_id) || null, avg_score_delta, last_day_added, daily_static_count, daily_video_count, daily_avg_productivity, daily_avg_quality, daily_avg_total }
-  })
-
-  return (
-    <LeaderboardPodium
-      entries={leaderboardWithTrends}
-      isAdmin={isAdmin}
-      currentRange={range}
-      weekOffset={weekOffset}
-    />
+  const entries: LeaderboardEntry[] = (currentLeaderboard || []).map(
+    (entry: LeaderboardEntry) => ({
+      ...entry,
+      avatar_path: avatarMap.get(entry.user_id) || null,
+    })
   )
+
+  return <LeaderboardPodium entries={entries} isAdmin={isAdmin} />
 }
 
 async function MatrixData({ range }: { range: TimeRange }) {
@@ -140,7 +159,6 @@ async function MatrixData({ range }: { range: TimeRange }) {
     time_range: range,
   })
 
-  // Fetch avatar paths
   const userIds = (leaderboard || []).map((e: { user_id: string }) => e.user_id)
   const { data: profiles } = await supabase
     .from('profiles')
@@ -195,7 +213,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const range = params.range || (view === 'matrix' ? 'week' : 'weekly')
   const weekOffset = params.week_offset ? parseInt(params.week_offset, 10) : 0
 
-  // Check if user is admin (for download button)
+  // Check if user is admin
   const supabase = await createClient()
   const {
     data: { user },
@@ -214,7 +232,6 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
   const leaderboardTimeOptions = [
     { value: 'weekly' as TimeRange, label: 'Weekly' },
-    { value: 'last_business_day' as TimeRange, label: 'Last Biz Day' },
     { value: 'all' as TimeRange, label: 'Total' },
   ]
 
@@ -258,9 +275,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <Suspense fallback={<MatrixSkeleton />}>
           <MatrixData range={range} />
         </Suspense>
+      ) : range === 'weekly' ? (
+        <Suspense fallback={<LeaderboardSkeleton />}>
+          <WeeklyLeaderboardData weekOffset={weekOffset} isAdmin={isAdmin} />
+        </Suspense>
       ) : (
         <Suspense fallback={<LeaderboardSkeleton />}>
-          <LeaderboardData range={range} isAdmin={isAdmin} weekOffset={weekOffset} />
+          <TotalLeaderboardData isAdmin={isAdmin} />
         </Suspense>
       )}
     </div>

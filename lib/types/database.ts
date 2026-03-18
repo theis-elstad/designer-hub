@@ -134,6 +134,7 @@ export type Database = {
         Args: {
           time_range?: string
           week_offset?: number
+          target_date?: string
         }
         Returns: {
           user_id: string
@@ -144,6 +145,8 @@ export type Database = {
           avg_quality: number
           cumulative_total_score: number
           rank: number
+          static_count: number
+          video_count: number
         }[]
       }
     }
@@ -195,6 +198,14 @@ export type AiSummary = {
   generated_by: string | null
   content: string
   metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type TimeAllocation = {
+  id: string
+  user_id: string
+  allocation_date: string
+  allocation: '0-30' | '30-70' | '70-100'
   created_at: string
 }
 

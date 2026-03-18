@@ -4,14 +4,57 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { computeWeightedProductivityCount } from '@/lib/utils'
 
-function computeSuggestedProductivity(assetCount: number, medianAssetCount: number): number {
-  if (medianAssetCount === 0) return 3
-  const ratio = assetCount / medianAssetCount
+function computeSuggestedProductivity(
+  assetCount: number,
+  medianAssetCount: number,
+  allocation?: '0-30' | '30-70' | '70-100'
+): number {
+  const multiplier = allocation === '0-30' ? 0.3 : allocation === '30-70' ? 0.6 : 1.0
+  const adjustedMedian = medianAssetCount * multiplier
+  if (adjustedMedian === 0) return 3
+  const ratio = assetCount / adjustedMedian
   if (ratio <= 0.6) return 1
   if (ratio <= 0.8) return 2
   if (ratio <= 1.0) return 3
   if (ratio <= 1.2) return 4
   return 5
+}
+
+export async function getDesignerGallery(
+  userId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ id: string; signedUrl: string; fileName: string; assetType: string; duration: number | null; submissionDate: string }[]> {
+  const supabase = await createClient()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase.rpc as any)('get_designer_assets', {
+    p_user_id: userId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  })
+
+  if (!data || data.length === 0) return []
+
+  type AssetRow = { asset_id: string; storage_path: string; file_name: string; asset_type: string; duration: number | null; submission_date: string }
+
+  const results = await Promise.all(
+    (data as AssetRow[]).map(async (asset) => {
+      const { data: urlData } = await supabase.storage
+        .from('submissions')
+        .createSignedUrl(asset.storage_path, 3600)
+      return {
+        id: asset.asset_id,
+        signedUrl: urlData?.signedUrl || '',
+        fileName: asset.file_name,
+        assetType: asset.asset_type,
+        duration: asset.duration,
+        submissionDate: asset.submission_date,
+      }
+    })
+  )
+
+  return results.filter((r) => r.signedUrl !== '')
 }
 
 export async function getSubmissionsForJudging(date?: string) {
@@ -206,10 +249,19 @@ export async function getSubmissionForJudgingById(submissionId: string) {
         ? weightedCounts[mid]
         : (weightedCounts[mid - 1] + weightedCounts[mid]) / 2
 
+  // Fetch time allocation for this submission's user + date
+  const { data: allocationData } = await supabase
+    .from('time_allocations')
+    .select('allocation')
+    .eq('user_id', sub.user_id)
+    .eq('allocation_date', sub.submission_date)
+    .single()
+  const allocation = (allocationData as { allocation: string } | null)?.allocation as '0-30' | '30-70' | '70-100' | undefined
+
   const thisStatics = sub.assets?.filter((a) => a.asset_type === 'image').length || 0
   const thisVideos = sub.assets?.filter((a) => a.asset_type === 'video') || []
   const thisWeightedCount = computeWeightedProductivityCount(thisStatics, thisVideos)
-  const suggestedProductivity = computeSuggestedProductivity(thisWeightedCount, medianWeightedCount)
+  const suggestedProductivity = computeSuggestedProductivity(thisWeightedCount, medianWeightedCount, allocation)
 
   return {
     id: sub.id,
@@ -223,6 +275,7 @@ export async function getSubmissionForJudgingById(submissionId: string) {
     status,
     myRating: myRating || null,
     suggestedProductivity,
+    timeAllocation: allocation || null,
     allRatings: (sub.ratings || []).map((r) => ({
       ratedBy: r.profiles?.full_name || 'Unknown',
       productivity: r.productivity,
