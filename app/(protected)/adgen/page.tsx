@@ -1,741 +1,321 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import {
-  Loader2,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
-  Search,
-
-  Image,
-  Check,
-  RefreshCw,
-  Download,
-  BookmarkPlus,
-  ExternalLink,
-} from 'lucide-react'
+import { Sparkles, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { UrlStep } from '@/components/adgen/url-step'
+import { SettingsStep } from '@/components/adgen/settings-step'
+import { ResultsPanel } from '@/components/adgen/results-panel'
+import { ResetDialog } from '@/components/adgen/reset-dialog'
+import type {
+  AdGenStep,
+  BrandResearch,
+  ProductResearch,
+  AdIdea,
+  SelectedImage,
+  GenerationSettings,
+  GeneratedCreative,
+} from '@/lib/types/adgen'
+import { DEFAULT_SETTINGS } from '@/lib/types/adgen'
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface BrandResearch {
-  brandName: string
-  industry: string
-  targetAudience: string
-  valueProposition: string
-  brandVoice: string
-  keyMessages: string[]
-  competitiveAdvantages: string[]
-  productCategories: string[]
-  pricePoint: string
-  brandPersonality: string[]
+interface ProductImageData {
+  src: string
+  width: number
+  height: number
+  alt: string | null
 }
 
-interface ProductResearch {
-  productName: string
-  productType: string
-  price: string
-  targetCustomer: string
-  keyBenefits: string[]
-  painPointsSolved: string[]
-  uniqueSellingPoints: string[]
-  useCases: string[]
-  competitiveContext: string
-  emotionalTriggers: string[]
-}
-
-interface AdIdea {
-  title: string
-  coreDesire: string
-  heuristic: string
-  headline: string
-  messagingAngle: string
-  visualConcept: string
-  adFormat: string
-}
-
-interface AdCreative {
-  imageBase64: string
-  mimeType: string
-  imagePrompt: string
-  generatedBy: string
-  adFormat: string
-  timestamp: string
-  idea: AdIdea
-}
-
-type StageId = 'brand' | 'product' | 'ideas' | 'creative'
-
-interface StageConfig {
-  id: StageId
-  label: string
-  icon: typeof Search
-  description: string
-}
-
-const STAGES: StageConfig[] = [
-  { id: 'brand', label: 'Brand Research', icon: Search, description: 'Analysing brand positioning and voice' },
-  { id: 'product', label: 'Product Analysis', icon: Search, description: 'Researching product features and audience' },
-  { id: 'creative', label: 'Ad Creative', icon: Image, description: 'Generating ad concepts and visuals' },
-]
-
-type StageStatus = 'idle' | 'running' | 'done' | 'error'
-
-interface PipelineState {
-  brandUrl: string
-  productUrl: string
-  brand: { status: StageStatus; data: BrandResearch | null; cached: boolean; error?: string }
-  product: { status: StageStatus; data: ProductResearch | null; error?: string }
-  ideas: { status: StageStatus; data: AdIdea[] | null; selected: Set<number>; error?: string }
-  creative: { status: StageStatus; data: AdCreative[] | null; error?: string }
-  expandedStage: StageId | null
-  pipelineRunning: boolean
-}
-
-const initialState: PipelineState = {
-  brandUrl: '',
-  productUrl: '',
-  brand: { status: 'idle', data: null, cached: false },
-  product: { status: 'idle', data: null },
-  ideas: { status: 'idle', data: null, selected: new Set() },
-  creative: { status: 'idle', data: null },
-  expandedStage: null,
-  pipelineRunning: false,
-}
-
-// ─── API calls ───────────────────────────────────────────────────────────────
-
-async function safeFetch(url: string, body: unknown): Promise<Record<string, unknown>> {
+async function safeFetch(url: string, body: unknown): Promise<Record<string, any>> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  let data: Record<string, unknown>
+  let data: Record<string, any>
   try {
     data = await res.json()
   } catch {
     throw new Error(`Server error (${res.status})`)
   }
-  if (!res.ok) throw new Error((data.error as string) || `Request failed (${res.status})`)
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
   return data
 }
 
-async function fetchBrandResearch(brandUrl: string): Promise<{ research: BrandResearch; brandName: string; cached: boolean }> {
-  return safeFetch('/api/adgen/brand-research', { brandUrl }) as any
-}
-
-async function fetchProductResearch(productUrl: string): Promise<{ research: ProductResearch }> {
-  return safeFetch('/api/adgen/product-research', { productUrl }) as any
-}
-
-async function fetchAdIdeas(brandResearch: BrandResearch, productResearch: ProductResearch): Promise<{ ideas: AdIdea[] }> {
-  return safeFetch('/api/adgen/ad-ideas', { brandResearch, productResearch }) as any
-}
-
-async function fetchAdCreative(
-  adIdea: AdIdea,
-  brandResearch: BrandResearch,
-  productResearch: ProductResearch
-): Promise<AdCreative> {
-  const data = await safeFetch('/api/adgen/ad-creative', { adIdea, brandResearch, productResearch })
-  return { ...data, idea: adIdea } as AdCreative
-}
-
-// ─── Stage Card wrapper ─────────────────────────────────────────────────────
-
-function StageCard({
-  config,
-  status,
-  expanded,
-  onToggle,
-  stageIndex,
-  currentStageIndex,
-  children,
-  summary,
-}: {
-  config: StageConfig
-  status: StageStatus
-  expanded: boolean
-  onToggle: () => void
-  stageIndex: number
-  currentStageIndex: number
-  children: React.ReactNode
-  summary?: React.ReactNode
-}) {
-  const isUpcoming = stageIndex > currentStageIndex && status === 'idle'
-  const Icon = config.icon
-
-  return (
-    <Card className={`transition-all duration-300 ${
-      status === 'running' ? 'ring-2 ring-gray-900 ring-offset-2' :
-      status === 'done' ? 'border-green-200 bg-green-50/30' :
-      status === 'error' ? 'border-red-200 bg-red-50/30' :
-      isUpcoming ? 'opacity-40' : ''
-    }`}>
-      <button
-        onClick={onToggle}
-        disabled={isUpcoming}
-        className="w-full px-5 py-4 flex items-center justify-between text-left"
-      >
-        <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-            status === 'done' ? 'bg-green-100 text-green-700' :
-            status === 'running' ? 'bg-gray-900 text-white' :
-            status === 'error' ? 'bg-red-100 text-red-700' :
-            'bg-gray-100 text-gray-400'
-          }`}>
-            {status === 'done' ? <Check className="w-4 h-4" /> :
-             status === 'running' ? <Loader2 className="w-4 h-4 animate-spin" /> :
-             status === 'error' ? '!' :
-             <Icon className="w-4 h-4" />}
-          </div>
-          <div>
-            <span className={`font-medium text-sm ${
-              status === 'done' ? 'text-green-800' :
-              status === 'running' ? 'text-gray-900' :
-              status === 'error' ? 'text-red-800' :
-              'text-gray-500'
-            }`}>{config.label}</span>
-            {status === 'running' && (
-              <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
-            )}
-            {status === 'done' && !expanded && summary && (
-              <div className="text-xs text-gray-500 mt-0.5">{summary}</div>
-            )}
-            {status === 'error' && (
-              <p className="text-xs text-red-600 mt-0.5">Failed — expand to retry</p>
-            )}
-          </div>
-        </div>
-        {!isUpcoming && (
-          expanded
-            ? <ChevronDown className="w-4 h-4 text-gray-400" />
-            : <ChevronRight className="w-4 h-4 text-gray-400" />
-        )}
-      </button>
-
-      {expanded && (
-        <CardContent className="px-5 pb-5 pt-0">
-          <div className="border-t pt-4">
-            {children}
-          </div>
-        </CardContent>
-      )}
-    </Card>
-  )
-}
-
-// ─── Inline helper components ─────────────────────────────────────────────
-
-function ResearchField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-3 bg-white/60 rounded-lg border border-gray-100">
-      <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-sm text-gray-800">{value}</p>
-    </div>
-  )
-}
-
-function TagsList({ label, tags }: { label: string; tags: string[] }) {
-  return (
-    <div className="p-3 bg-white/60 rounded-lg border border-gray-100">
-      <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-2">{label}</p>
-      <div className="flex flex-wrap gap-1">
-        {tags?.slice(0, 6).map((tag, i) => (
-          <Badge key={i} variant="secondary" className="text-xs font-normal">{tag}</Badge>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Running stage skeleton ──────────────────────────────────────────────
-
-function StageLoadingSkeleton() {
-  return (
-    <div className="space-y-3 py-2">
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        <Skeleton className="h-20" />
-        <Skeleton className="h-20" />
-      </div>
-    </div>
-  )
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function isValidUrl(str: string): boolean {
-  if (!str.trim()) return false
-  try {
-    new URL(str.startsWith('http') ? str : `https://${str}`)
-    return true
-  } catch {
-    return false
-  }
-}
-
-// ─── Main page ───────────────────────────────────────────────────────────────
+let creativeIdCounter = 0
 
 export default function AdGenPage() {
-  const [state, setState] = useState<PipelineState>(initialState)
-  const abortRef = useRef<AbortController | null>(null)
+  const [step, setStep] = useState<AdGenStep>('url')
+  const [url, setUrl] = useState('')
+  const [brandResearch, setBrandResearch] = useState<BrandResearch | null>(null)
+  const [productResearch, setProductResearch] = useState<ProductResearch | null>(null)
+  const [productImages, setProductImages] = useState<ProductImageData[]>([])
+  const [productTitle, setProductTitle] = useState<string | null>(null)
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([])
+  const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_SETTINGS)
+  const [creatives, setCreatives] = useState<GeneratedCreative[]>([])
+  const [generating, setGenerating] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [showReset, setShowReset] = useState(false)
 
-  // Derive current stage index (which stage is active/next)
-  const currentStageIndex = (() => {
-    if (state.creative.status === 'done' || state.creative.status === 'running') return 2
-    if (state.ideas.status === 'done' || state.ideas.status === 'running') return 2
-    if (state.product.status === 'done' || state.product.status === 'running') return 1
-    if (state.brand.status === 'done' || state.brand.status === 'running') return 0
-    return -1
-  })()
-
-  // Clear downstream stages from a given stage
-  const clearDownstream = useCallback((fromStage: StageId) => {
-    const stageOrder: StageId[] = ['brand', 'product', 'ideas', 'creative']
-    const startIdx = stageOrder.indexOf(fromStage)
-    setState(prev => {
-      const next = { ...prev }
-      for (let i = startIdx + 1; i < stageOrder.length; i++) {
-        const id = stageOrder[i]
-        if (id === 'ideas') {
-          next.ideas = { status: 'idle', data: null, selected: new Set() }
-        } else if (id === 'brand') {
-          next.brand = { status: 'idle', data: null, cached: false }
-        } else {
-          (next as any)[id] = { status: 'idle', data: null }
-        }
-      }
-      return next
-    })
-  }, [])
-
-  // Toggle stage expansion
-  const toggleStage = useCallback((stageId: StageId) => {
-    setState(prev => ({
-      ...prev,
-      expandedStage: prev.expandedStage === stageId ? null : stageId,
-    }))
-  }, [])
-
-  // ─── Pipeline runner ─────────────────────────────────────────────────────
-
-  const runPipeline = useCallback(async (brandUrl: string, productUrl?: string) => {
-    const abort = new AbortController()
-    abortRef.current = abort
-
-    setState(prev => ({
-      ...prev,
-      brandUrl,
-      productUrl: productUrl || prev.productUrl,
-      pipelineRunning: true,
-      expandedStage: null,
-      // Reset all stages
-      brand: { status: 'idle', data: null, cached: false },
-      product: { status: 'idle', data: null },
-      ideas: { status: 'idle', data: null, selected: new Set() },
-      creative: { status: 'idle', data: null },
-    }))
+  // URL submit → parallel fetches → settings step
+  const handleUrlSubmit = useCallback(async (submittedUrl: string) => {
+    setUrl(submittedUrl)
+    setStep('settings')
+    setProgress('Loading research and images...')
+    setGenerating(true)
 
     try {
-      // Stage 1: Brand Research
-      setState(prev => ({ ...prev, brand: { ...prev.brand, status: 'running' } }))
-      const brandResult = await fetchBrandResearch(brandUrl)
-      if (abort.signal.aborted) return
-      setState(prev => ({
-        ...prev,
-        brand: { status: 'done', data: brandResult.research, cached: brandResult.cached },
-      }))
-      if (brandResult.cached) toast.info('Using cached brand research')
+      const [brandRes, productRes, imagesRes] = await Promise.all([
+        safeFetch('/api/adgen/brand-research', { brandUrl: submittedUrl }),
+        safeFetch('/api/adgen/product-research', { productUrl: submittedUrl }),
+        safeFetch('/api/adgen/fetch-images', { url: submittedUrl }),
+      ])
 
-      // Stage 2: Product Research
-      if (abort.signal.aborted) return
-      const pUrl = productUrl || brandUrl
-      setState(prev => ({ ...prev, productUrl: pUrl, product: { ...prev.product, status: 'running' } }))
-      const productResult = await fetchProductResearch(pUrl)
-      if (abort.signal.aborted) return
-      setState(prev => ({
-        ...prev,
-        product: { status: 'done', data: productResult.research },
-      }))
+      setBrandResearch(brandRes.research as BrandResearch)
+      setProductResearch(productRes.research as ProductResearch)
+      setProductImages((imagesRes.images || []) as ProductImageData[])
+      setProductTitle((imagesRes.title as string) || null)
 
-      // Stage 3: Ad Ideas
-      if (abort.signal.aborted) return
-      setState(prev => ({ ...prev, ideas: { ...prev.ideas, status: 'running' } }))
-      const ideasResult = await fetchAdIdeas(brandResult.research, productResult.research)
-      if (abort.signal.aborted) return
-      const autoSelected = new Set<number>([0, 1, 2].filter(i => i < ideasResult.ideas.length))
-      setState(prev => ({
-        ...prev,
-        ideas: { status: 'done', data: ideasResult.ideas, selected: autoSelected },
-      }))
-
-      // Stage 4: Ad Creatives (for selected ideas)
-      if (abort.signal.aborted) return
-      setState(prev => ({ ...prev, creative: { ...prev.creative, status: 'running' } }))
-      const selectedIdeas = Array.from(autoSelected).map(i => ideasResult.ideas[i])
-      const creatives: AdCreative[] = []
-      for (const idea of selectedIdeas) {
-        if (abort.signal.aborted) return
-        const creative = await fetchAdCreative(idea, brandResult.research, productResult.research)
-        creatives.push(creative)
-        setState(prev => ({
-          ...prev,
-          creative: { ...prev.creative, data: [...creatives] },
-        }))
-      }
-      if (abort.signal.aborted) return
-      setState(prev => ({
-        ...prev,
-        creative: { status: 'done', data: creatives },
-        pipelineRunning: false,
-        expandedStage: 'creative',
-      }))
-
+      if (brandRes.cached) toast.info('Using cached brand research')
+      if (productRes.cached) toast.info('Using cached product research')
     } catch (err) {
-      if (abort.signal.aborted) return
-      const msg = err instanceof Error ? err.message : 'Pipeline failed'
-      toast.error(msg)
-      // Mark whichever stage was running as errored
-      setState(prev => {
-        const next = { ...prev, pipelineRunning: false }
-        const stages: StageId[] = ['brand', 'product', 'ideas', 'creative']
-        for (const s of stages) {
-          if ((next as any)[s].status === 'running') {
-            (next as any)[s] = { ...(next as any)[s], status: 'error', error: msg }
-            next.expandedStage = s
-            break
+      toast.error(err instanceof Error ? err.message : 'Failed to load data')
+      setStep('url')
+    } finally {
+      setGenerating(false)
+      setProgress('')
+    }
+  }, [])
+
+  // Generate creatives
+  const handleGenerate = useCallback(async () => {
+    if (!brandResearch || !productResearch) return
+
+    setStep('generating')
+    setGenerating(true)
+
+    try {
+      // Prepare images payload for API
+      const imagePayload = selectedImages.map((img) => ({
+        url: img.source !== 'upload' ? img.src : undefined,
+        base64: img.base64,
+        mimeType: img.mimeType,
+        label: img.label,
+      }))
+
+      // Step 1: Generate ad ideas
+      setProgress('Generating ad ideas...')
+      const ideasRes = await safeFetch('/api/adgen/ad-ideas', {
+        brandResearch,
+        productResearch,
+      })
+      const ideas = (ideasRes.ideas as AdIdea[]).slice(0, settings.ideaCount)
+
+      if (!ideas || ideas.length === 0) {
+        throw new Error('No ad ideas generated')
+      }
+
+      // Step 2: Generate creatives for each idea × variation
+      const newCreatives: GeneratedCreative[] = []
+      let count = 0
+      const total = ideas.length * settings.variationsPerIdea
+
+      for (const idea of ideas) {
+        for (let v = 0; v < settings.variationsPerIdea; v++) {
+          count++
+          setProgress(`Generating creative ${count}/${total}...`)
+
+          const res = await safeFetch('/api/adgen/ad-creative', {
+            adIdea: idea,
+            brandResearch,
+            productResearch,
+            images: imagePayload,
+            format: settings.format,
+          })
+
+          const creative: GeneratedCreative = {
+            id: `creative-${++creativeIdCounter}`,
+            imageBase64: res.imageBase64 as string,
+            mimeType: res.mimeType as string,
+            imagePrompt: res.imagePrompt as string,
+            idea,
+            format: settings.format,
+            generatedAt: new Date().toISOString(),
           }
+          newCreatives.push(creative)
+          setCreatives((prev) => [creative, ...prev])
         }
-        return next
-      })
+      }
+
+      setStep('results')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Generation failed')
+      setStep('settings')
+    } finally {
+      setGenerating(false)
+      setProgress('')
     }
+  }, [brandResearch, productResearch, selectedImages, settings])
+
+  // Post-generation actions
+  const handleVariation = useCallback(async (creative: GeneratedCreative, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const res = await safeFetch('/api/adgen/vary-creative', {
+        imageBase64: creative.imageBase64,
+        mimeType: creative.mimeType,
+        format: creative.format,
+      })
+      const newCreative: GeneratedCreative = {
+        id: `creative-${++creativeIdCounter}`,
+        imageBase64: res.imageBase64 as string,
+        mimeType: res.mimeType as string,
+        imagePrompt: `Variation of: ${creative.imagePrompt}`,
+        idea: creative.idea,
+        format: creative.format,
+        generatedAt: new Date().toISOString(),
+        parentId: creative.id,
+      }
+      setCreatives((prev) => [newCreative, ...prev])
+    }
+    toast.success(`${count} variation${count > 1 ? 's' : ''} created`)
   }, [])
 
-  // Re-run a single stage (and clear downstream)
-  const rerunStage = useCallback(async (stageId: StageId) => {
-    clearDownstream(stageId)
-    const { brandUrl, productUrl, brand, product, ideas } = state
-
-    try {
-      if (stageId === 'brand') {
-        setState(prev => ({ ...prev, brand: { ...prev.brand, status: 'running' } }))
-        const result = await fetchBrandResearch(brandUrl)
-        setState(prev => ({
-          ...prev,
-          brand: { status: 'done', data: result.research, cached: result.cached },
-        }))
-      } else if (stageId === 'product' && brand.data) {
-        setState(prev => ({ ...prev, product: { ...prev.product, status: 'running' } }))
-        const result = await fetchProductResearch(productUrl)
-        setState(prev => ({
-          ...prev,
-          product: { status: 'done', data: result.research },
-        }))
-      } else if (stageId === 'ideas' && brand.data && product.data) {
-        setState(prev => ({ ...prev, ideas: { ...prev.ideas, status: 'running' } }))
-        const result = await fetchAdIdeas(brand.data, product.data)
-        const autoSelected = new Set<number>([0, 1, 2].filter(i => i < result.ideas.length))
-        setState(prev => ({
-          ...prev,
-          ideas: { status: 'done', data: result.ideas, selected: autoSelected },
-        }))
-      } else if (stageId === 'creative' && brand.data && product.data && ideas.data) {
-        setState(prev => ({ ...prev, creative: { ...prev.creative, status: 'running' } }))
-        const selectedIdeas = Array.from(ideas.selected).map(i => ideas.data![i])
-        const creatives: AdCreative[] = []
-        for (const idea of selectedIdeas) {
-          const creative = await fetchAdCreative(idea, brand.data!, product.data!)
-          creatives.push(creative)
-          setState(prev => ({
-            ...prev,
-            creative: { ...prev.creative, data: [...creatives] },
-          }))
-        }
-        setState(prev => ({
-          ...prev,
-          creative: { status: 'done', data: creatives },
-        }))
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed'
-      toast.error(msg)
-      setState(prev => ({
-        ...prev,
-        [stageId]: { ...(prev as any)[stageId], status: 'error', error: msg },
-      }))
-    }
-  }, [state, clearDownstream])
-
-  // Download image
-  const downloadImage = useCallback((creative: AdCreative, index: number) => {
-    const link = document.createElement('a')
-    link.href = `data:${creative.mimeType};base64,${creative.imageBase64}`
-    link.download = `adgen-creative-${index + 1}.png`
-    link.click()
-  }, [])
-
-  // Save to library
-  const saveToLibrary = useCallback(async (creative: AdCreative) => {
-    try {
-      const res = await fetch('/api/adgen/library', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brandUrl: state.brandUrl,
-          productUrl: state.productUrl,
-          idea: creative.idea,
-          imagePrompt: creative.imagePrompt,
-          generatedBy: creative.generatedBy,
-          adFormat: creative.adFormat,
-          imageBase64: creative.imageBase64,
-          mimeType: creative.mimeType,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Save failed')
-      }
-      toast.success('Saved to library')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed')
-    }
-  }, [state.brandUrl, state.productUrl])
-
-  // ─── Input form (shown when pipeline hasn't started) ─────────────────────
-
-  const [urls, setUrls] = useState<string[]>([''])
-
-  const updateUrl = useCallback((index: number, value: string) => {
-    setUrls(prev => {
-      const next = [...prev]
-      next[index] = value
-      // Remove trailing empty slots that no longer follow a valid URL
-      while (next.length > 1 && next[next.length - 1] === '' && !isValidUrl(next[next.length - 2]?.trim())) {
-        next.pop()
-      }
-      // Add a new empty slot when the last one becomes valid (max 5)
-      if (isValidUrl(next[next.length - 1]?.trim()) && next.length < 5) {
-        next.push('')
-      }
-      return next
+  const handleEdit = useCallback(async (creative: GeneratedCreative, instruction: string) => {
+    const res = await safeFetch('/api/adgen/edit-creative', {
+      imageBase64: creative.imageBase64,
+      mimeType: creative.mimeType,
+      instruction,
     })
+    const newCreative: GeneratedCreative = {
+      id: `creative-${++creativeIdCounter}`,
+      imageBase64: res.imageBase64 as string,
+      mimeType: res.mimeType as string,
+      imagePrompt: `Edit: ${instruction}`,
+      idea: creative.idea,
+      format: creative.format,
+      generatedAt: new Date().toISOString(),
+      parentId: creative.id,
+    }
+    setCreatives((prev) => [newCreative, ...prev])
+    toast.success('Edit applied')
   }, [])
 
-  const validUrls = urls.filter(u => isValidUrl(u.trim())).map(u => u.trim())
+  const handleChangeFormat = useCallback(async (creative: GeneratedCreative) => {
+    const targetFormat = creative.format === '1:1' ? '9:16' : '1:1'
+    const res = await safeFetch('/api/adgen/change-format', {
+      imageBase64: creative.imageBase64,
+      mimeType: creative.mimeType,
+      targetFormat,
+    })
+    const newCreative: GeneratedCreative = {
+      id: `creative-${++creativeIdCounter}`,
+      imageBase64: res.imageBase64 as string,
+      mimeType: res.mimeType as string,
+      imagePrompt: `Format change: ${creative.format} → ${targetFormat}`,
+      idea: creative.idea,
+      format: targetFormat,
+      generatedAt: new Date().toISOString(),
+      parentId: creative.id,
+    }
+    setCreatives((prev) => [newCreative, ...prev])
+    toast.success(`Reformatted to ${targetFormat}`)
+  }, [])
 
-  const hasStarted = currentStageIndex >= 0
+  const handleSaveToLibrary = useCallback(async (creative: GeneratedCreative) => {
+    await safeFetch('/api/adgen/library', {
+      brandUrl: url,
+      productUrl: url,
+      idea: creative.idea,
+      imagePrompt: creative.imagePrompt,
+      generatedBy: 'gemini-3-pro',
+      adFormat: creative.format,
+      imageBase64: creative.imageBase64,
+      mimeType: creative.mimeType,
+    })
+    toast.success('Saved to library')
+  }, [url])
+
+  const handleReset = useCallback(() => {
+    setStep('url')
+    setUrl('')
+    setBrandResearch(null)
+    setProductResearch(null)
+    setProductImages([])
+    setProductTitle(null)
+    setSelectedImages([])
+    setSettings(DEFAULT_SETTINGS)
+    setCreatives([])
+    setShowReset(false)
+  }, [])
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Sparkles className="w-6 h-6" /> Ad Creative Generator
-        </h1>
-        <p className="text-gray-500 mt-1 text-sm">Paste a URL. Get ad creatives.</p>
-      </div>
-
-      {/* Input area — always visible when pipeline hasn't started */}
-      {!hasStarted && (
-        <Card className="mb-6">
-          <CardContent className="p-5 space-y-3">
-            {urls.map((url, i) => (
-              <Input
-                key={i}
-                placeholder={i === 0 ? 'Paste a URL...' : 'Add another URL...'}
-                value={url}
-                onChange={e => updateUrl(i, e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && validUrls.length > 0) {
-                    runPipeline(validUrls[0], validUrls[1])
-                  }
-                }}
-                className="text-base"
-                autoFocus={i === 0}
-              />
-            ))}
-            <Button
-              onClick={() => runPipeline(validUrls[0], validUrls[1])}
-              disabled={validUrls.length === 0}
-              className="w-full"
-              size="lg"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Generate Ad Creatives
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pipeline stages */}
-      {hasStarted && (
-        <div className="space-y-3">
-          {STAGES.map((config, i) => {
-            // For the creative card, fold hidden ideas stage into its visible status
-            const rawStatus = (state[config.id] as any).status as StageStatus
-            const status: StageStatus = config.id === 'creative'
-              ? (state.ideas.status === 'running' ? 'running'
-                : state.ideas.status === 'error' ? 'error'
-                : rawStatus)
-              : rawStatus
-            const expanded = state.expandedStage === config.id
-
-            return (
-              <StageCard
-                key={config.id}
-                config={config}
-                status={status}
-                expanded={expanded}
-                onToggle={() => toggleStage(config.id)}
-                stageIndex={i}
-                currentStageIndex={currentStageIndex}
-                summary={
-                  config.id === 'brand' && state.brand.data ? (
-                    <span>{state.brand.data.brandName} · {state.brand.data.industry} {state.brand.cached && '(cached)'}</span>
-                  ) : config.id === 'product' && state.product.data ? (
-                    <span>{state.product.data.productName} · {state.product.data.price}</span>
-                  ) : config.id === 'creative' && state.creative.data ? (
-                    <span>{state.creative.data.length} creative{state.creative.data.length !== 1 ? 's' : ''} generated</span>
-                  ) : undefined
-                }
-              >
-                {/* Stage-specific content */}
-                {status === 'running' && <StageLoadingSkeleton />}
-
-                {/* ── Brand Research ── */}
-                {config.id === 'brand' && state.brand.data && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h3 className="font-semibold text-gray-900">{state.brand.data.brandName}</h3>
-                      {state.brand.cached && <Badge variant="secondary" className="text-xs">Cached</Badge>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <ResearchField label="Industry" value={state.brand.data.industry} />
-                      <ResearchField label="Price Point" value={state.brand.data.pricePoint} />
-                      <ResearchField label="Target Audience" value={state.brand.data.targetAudience} />
-                      <ResearchField label="Brand Voice" value={state.brand.data.brandVoice} />
-                    </div>
-                    <ResearchField label="Value Proposition" value={state.brand.data.valueProposition} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <TagsList label="Brand Personality" tags={state.brand.data.brandPersonality} />
-                      <TagsList label="Key Messages" tags={state.brand.data.keyMessages} />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => rerunStage('brand')}>
-                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Re-run Brand Research
-                    </Button>
-                  </div>
-                )}
-
-                {/* ── Product Research ── */}
-                {config.id === 'product' && state.product.data && (
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-gray-900">{state.product.data.productName}</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <ResearchField label="Product Type" value={state.product.data.productType} />
-                      <ResearchField label="Price" value={state.product.data.price} />
-                      <ResearchField label="Target Customer" value={state.product.data.targetCustomer} />
-                      <ResearchField label="Competitive Context" value={state.product.data.competitiveContext} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <TagsList label="Key Benefits" tags={state.product.data.keyBenefits} />
-                      <TagsList label="Pain Points Solved" tags={state.product.data.painPointsSolved} />
-                      <TagsList label="Emotional Triggers" tags={state.product.data.emotionalTriggers} />
-                      <TagsList label="USPs" tags={state.product.data.uniqueSellingPoints} />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => rerunStage('product')}>
-                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Re-run Product Research
-                    </Button>
-                  </div>
-                )}
-
-                {/* ── Ad Creatives ── */}
-                {config.id === 'creative' && state.creative.data && (
-                  <div className="space-y-5">
-                    {state.creative.data.map((creative, idx) => (
-                      <div key={idx} className="border rounded-xl overflow-hidden bg-white">
-                        <div className="aspect-square bg-gray-50 relative max-h-[400px]">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`data:${creative.mimeType};base64,${creative.imageBase64}`}
-                            alt={`Ad creative: ${creative.idea.title}`}
-                            className="w-full h-full object-contain"
-                          />
-                        </div>
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">{creative.idea.title}</p>
-                              <p className="text-xs text-gray-400">{creative.generatedBy} · {creative.adFormat}</p>
-                            </div>
-                            <div className="flex gap-1.5">
-                              <Button size="sm" variant="outline" onClick={() => downloadImage(creative, idx)}>
-                                <Download className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => saveToLibrary(creative)}>
-                                <BookmarkPlus className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                          <details className="text-xs text-gray-400">
-                            <summary className="cursor-pointer hover:text-gray-600">Image prompt</summary>
-                            <p className="mt-1 leading-relaxed">{creative.imagePrompt}</p>
-                          </details>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => rerunStage('creative')}>
-                        <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Regenerate All Creatives
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Error state with retry */}
-                {status === 'error' && (
-                  <div className="space-y-3">
-                    <p className="text-sm text-red-600">{
-                      (config.id === 'creative' && state.ideas.status === 'error'
-                        ? state.ideas.error
-                        : (state[config.id] as any).error) || 'Something went wrong'
-                    }</p>
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const retryId = config.id === 'creative' && state.ideas.status === 'error' ? 'ideas' as StageId : config.id
-                      rerunStage(retryId)
-                    }}>
-                      <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Retry
-                    </Button>
-                  </div>
-                )}
-              </StageCard>
-            )
-          })}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Sparkles className="h-6 w-6" /> Ad Creative Generator
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Paste a URL. Select images. Get ad creatives.
+          </p>
         </div>
-      )}
-
-      {/* Restart button after pipeline completes */}
-      {hasStarted && !state.pipelineRunning && state.creative.status === 'done' && (
-        <div className="mt-6 text-center">
+        {step !== 'url' && (
           <Button
             variant="outline"
-            onClick={() => {
-              setState(initialState)
-              setUrls([''])
-            }}
+            size="sm"
+            onClick={() =>
+              creatives.length > 0 ? setShowReset(true) : handleReset()
+            }
           >
-            <Sparkles className="w-4 h-4 mr-2" /> Start New Generation
+            <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
           </Button>
+        )}
+      </div>
+
+      {/* Steps */}
+      {step === 'url' && <UrlStep onSubmit={handleUrlSubmit} />}
+
+      {step === 'settings' && !generating && (
+        <SettingsStep
+          brandResearch={brandResearch}
+          productResearch={productResearch}
+          productImages={productImages}
+          productTitle={productTitle}
+          selectedImages={selectedImages}
+          onSelectedImages={setSelectedImages}
+          settings={settings}
+          onSettings={setSettings}
+          onGenerate={handleGenerate}
+          onBack={() => setStep('url')}
+        />
+      )}
+
+      {generating && (
+        <div className="flex flex-col items-center justify-center gap-3 py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">{progress}</p>
         </div>
       )}
+
+      {step === 'results' && !generating && (
+        <ResultsPanel
+          creatives={creatives}
+          onVariation={handleVariation}
+          onEdit={handleEdit}
+          onChangeFormat={handleChangeFormat}
+          onSaveToLibrary={handleSaveToLibrary}
+          onGenerateMore={() => setStep('settings')}
+          onReset={() => setShowReset(true)}
+        />
+      )}
+
+      <ResetDialog
+        open={showReset}
+        onOpenChange={setShowReset}
+        onConfirm={handleReset}
+      />
     </div>
   )
 }
