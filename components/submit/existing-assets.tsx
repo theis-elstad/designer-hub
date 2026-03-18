@@ -13,9 +13,10 @@ import {
 
 interface ExistingAssetsProps {
   assets: Asset[]
+  onAssetDeleted?: (assetId: string) => void
 }
 
-export function ExistingAssets({ assets: initialAssets }: ExistingAssetsProps) {
+export function ExistingAssets({ assets: initialAssets, onAssetDeleted }: ExistingAssetsProps) {
   const [assets, setAssets] = useState(initialAssets)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
@@ -57,6 +58,7 @@ export function ExistingAssets({ assets: initialAssets }: ExistingAssetsProps) {
     const result = await deleteAsset(asset.id, asset.storage_path)
     if (result.success) {
       setAssets((prev) => prev.filter((a) => a.id !== asset.id))
+      onAssetDeleted?.(asset.id)
     }
     setDeletingId(null)
   }

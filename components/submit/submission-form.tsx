@@ -157,7 +157,12 @@ export function SubmissionForm({
         />
 
         {hasSubmitted && existingAssets.length > 0 && (
-          <ExistingAssets assets={existingAssets} />
+          <ExistingAssets
+            assets={existingAssets}
+            onAssetDeleted={(assetId) =>
+              setExistingAssets((prev) => prev.filter((a) => a.id !== assetId))
+            }
+          />
         )}
 
         {/* Comment section */}
