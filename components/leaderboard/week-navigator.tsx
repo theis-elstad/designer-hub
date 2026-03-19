@@ -10,6 +10,8 @@ interface WeekNavigatorProps {
 }
 
 function getWeekLabel(weekOffset: number): string {
+  if (weekOffset === 0) return 'This Week'
+  if (weekOffset === -1) return 'Last Week'
   const today = new Date()
   const dow = today.getDay()
   const daysSinceFriday = ((dow - 5) + 7) % 7
@@ -32,7 +34,6 @@ export function WeekNavigator({ weekOffset }: WeekNavigatorProps) {
     } else {
       params.set('week_offset', newOffset.toString())
     }
-    params.set('range', 'weekly')
     router.push(`/leaderboard?${params.toString()}`)
   }
 

@@ -229,4 +229,6 @@ export type LeaderboardEntry = {
   daily_avg_productivity?: number
   daily_avg_quality?: number
   daily_avg_total?: number
+  cumulative_productivity?: number
+  cumulative_quality?: number
 }

@@ -7,8 +7,11 @@ import { DayLeaderboardTable } from './day-leaderboard-table'
 import { WeeklyWinnerTable } from './weekly-winner-table'
 import { DesignerGalleryDialog } from './designer-gallery-dialog'
 import { DownloadMenu } from './download-menu'
-import { HorseRaceChart } from './horse-race-chart'
+import { WeekNavigator } from '@/components/leaderboard/week-navigator'
+import { MatrixChart } from '@/components/matrix/matrix-chart'
 import type { LeaderboardEntry } from '@/lib/types/database'
+
+type ViewMode = 'list' | 'matrix'
 
 interface WeekDay {
   date: string
@@ -50,6 +53,7 @@ export function WeeklyLeaderboard({
   weekEndDate,
 }: WeeklyLeaderboardProps) {
   const listRef = useRef<HTMLDivElement>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   // Gallery dialog state
   const [galleryOpen, setGalleryOpen] = useState(false)
@@ -66,7 +70,8 @@ export function WeeklyLeaderboard({
     return 'ww'
   })()
 
-  const [activeTab, setActiveTab] = useState(defaultTab)
+  const [listTab, setListTab] = useState(defaultTab)
+  const [matrixTab, setMatrixTab] = useState(defaultTab)
 
   const openGallery = useCallback((userId: string, designerName: string, startDate: string, endDate: string) => {
     setGalleryUserId(userId)
@@ -84,13 +89,24 @@ export function WeeklyLeaderboard({
     openGallery(userId, designerName, weekStartDate, weekEndDate)
   }, [openGallery, weekStartDate, weekEndDate])
 
+  const activeTab = viewMode === 'list' ? listTab : matrixTab
+  const setActiveTab = viewMode === 'list' ? setListTab : setMatrixTab
+
   return (
-    <div className="space-y-6">
-      {isAdmin && (
-        <div className="flex justify-end">
+    <div className="space-y-4">
+      {/* Controls row */}
+      <div className="flex items-center justify-between gap-4">
+        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+          <TabsList>
+            <TabsTrigger value="list">List View</TabsTrigger>
+            <TabsTrigger value="matrix">Matrix</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <WeekNavigator weekOffset={weekOffset} />
+        {isAdmin && (
           <DownloadMenu listRef={listRef} filePrefix={`leaderboard-${activeTab}`} />
-        </div>
-      )}
+        )}
+      </div>
 
       <div ref={listRef} className="bg-white rounded-lg overflow-hidden">
         {/* Banner */}
@@ -99,39 +115,85 @@ export function WeeklyLeaderboard({
           <p className="text-sm text-gray-300">{getWeekRangeLabel(weekOffset)}</p>
         </div>
 
-        {/* Day tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="px-4 sm:px-6 pt-3 bg-gray-50 border-b">
-            <TabsList>
-              {weekDays.map((day) => (
-                <TabsTrigger key={day.date} value={day.date}>
-                  {day.label}
+        {/* List View */}
+        {viewMode === 'list' && (
+          <Tabs value={listTab} onValueChange={setListTab} className="gap-0">
+            <div className="pl-0 pr-4 sm:pr-6 py-2 bg-gray-50 border-b">
+              <TabsList>
+                {weekDays.map((day) => (
+                  <TabsTrigger key={day.date} value={day.date}>
+                    {day.label}
+                  </TabsTrigger>
+                ))}
+                <TabsTrigger value="ww" className="text-amber-700 data-[state=active]:bg-amber-50 data-[state=active]:text-amber-900">
+                  Weekly Total
                 </TabsTrigger>
-              ))}
-              <TabsTrigger value="ww">Weekly Total</TabsTrigger>
-            </TabsList>
-          </div>
+              </TabsList>
+            </div>
 
-          {weekDays.map((day) => (
-            <TabsContent key={day.date} value={day.date} className="mt-0">
-              <DayLeaderboardTable
-                entries={day.entries}
-                date={day.date}
-                onAssetClick={handleDayAssetClick(day.date)}
+            {weekDays.map((day) => (
+              <TabsContent key={day.date} value={day.date} className="mt-0">
+                <DayLeaderboardTable
+                  entries={day.entries}
+                  date={day.date}
+                  onAssetClick={handleDayAssetClick(day.date)}
+                />
+              </TabsContent>
+            ))}
+
+            <TabsContent value="ww" className="mt-0">
+              <WeeklyWinnerTable
+                entries={weeklyEntries}
+                onAssetClick={handleWeekAssetClick}
               />
             </TabsContent>
-          ))}
+          </Tabs>
+        )}
 
-          <TabsContent value="ww" className="mt-0">
-            <div className="p-4 sm:p-6 space-y-6">
-              <HorseRaceChart weekDays={weekDays} weeklyEntries={weeklyEntries} />
+        {/* Matrix View */}
+        {viewMode === 'matrix' && (
+          <Tabs value={matrixTab} onValueChange={setMatrixTab} className="gap-0">
+            <div className="pl-0 pr-4 sm:pr-6 py-2 bg-gray-50 border-b">
+              <TabsList>
+                {weekDays.map((day) => (
+                  <TabsTrigger key={day.date} value={day.date}>
+                    {day.label}
+                  </TabsTrigger>
+                ))}
+                <TabsTrigger value="ww" className="text-amber-700 data-[state=active]:bg-amber-50 data-[state=active]:text-amber-900">
+                  Weekly Total
+                </TabsTrigger>
+                <TabsTrigger value="avg" className="text-amber-700 data-[state=active]:bg-amber-50 data-[state=active]:text-amber-900">
+                  Average
+                </TabsTrigger>
+              </TabsList>
             </div>
-            <WeeklyWinnerTable
-              entries={weeklyEntries}
-              onAssetClick={handleWeekAssetClick}
-            />
-          </TabsContent>
-        </Tabs>
+
+            {weekDays.map((day) => (
+              <TabsContent key={day.date} value={day.date} className="mt-0 p-2 sm:p-4">
+                <MatrixChart
+                  entries={day.entries}
+                  mode="avg"
+                />
+              </TabsContent>
+            ))}
+
+            <TabsContent value="ww" className="mt-0 p-2 sm:p-4">
+              <MatrixChart
+                entries={weeklyEntries}
+                mode="cumulative"
+                weekDays={weekDays}
+              />
+            </TabsContent>
+
+            <TabsContent value="avg" className="mt-0 p-2 sm:p-4">
+              <MatrixChart
+                entries={weeklyEntries}
+                mode="avg"
+              />
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
 
       <DesignerGalleryDialog
