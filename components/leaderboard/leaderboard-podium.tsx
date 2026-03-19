@@ -1,10 +1,10 @@
 'use client'
 
-import { useRef, useCallback } from 'react'
-import { Trophy, Download, Medal, ScissorsLineDashed } from 'lucide-react'
+import { useRef } from 'react'
+import { Trophy, Medal } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
 import { cn, getAvatarUrl } from '@/lib/utils'
+import { DownloadMenu } from './download-menu'
 import type { LeaderboardEntry } from '@/lib/types/database'
 
 interface LeaderboardPodiumProps {
@@ -31,47 +31,6 @@ function RankBadge({ rank }: { rank: number }) {
 export function LeaderboardPodium({ entries, isAdmin }: LeaderboardPodiumProps) {
   const listRef = useRef<HTMLDivElement>(null)
 
-  const handleDownload = useCallback(async () => {
-    if (!listRef.current) return
-    try {
-      const htmlToImage = await import('html-to-image')
-      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const link = document.createElement('a')
-      link.download = `leaderboard-total-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download leaderboard image:', error)
-    }
-  }, [])
-
-  const handleTopHalfDownload = useCallback(async () => {
-    if (!listRef.current) return
-    const rows = listRef.current.querySelectorAll<HTMLElement>('[data-rank]')
-    const hideFrom = Math.ceil(rows.length / 2)
-    const hidden: { el: HTMLElement; prev: string }[] = []
-
-    rows.forEach((row, index) => {
-      if (index >= hideFrom) {
-        hidden.push({ el: row, prev: row.style.display })
-        row.style.display = 'none'
-      }
-    })
-
-    try {
-      const htmlToImage = await import('html-to-image')
-      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const link = document.createElement('a')
-      link.download = `leaderboard-top-half-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download top-half leaderboard image:', error)
-    } finally {
-      hidden.forEach(({ el, prev }) => { el.style.display = prev })
-    }
-  }, [])
-
   if (entries.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500">
@@ -85,14 +44,8 @@ export function LeaderboardPodium({ entries, isAdmin }: LeaderboardPodiumProps) 
   return (
     <div className="space-y-6">
       {isAdmin && (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleTopHalfDownload} title="Download top half only">
-            <ScissorsLineDashed className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
-          </Button>
+        <div className="flex justify-end">
+          <DownloadMenu listRef={listRef} filePrefix="leaderboard-total" />
         </div>
       )}
 

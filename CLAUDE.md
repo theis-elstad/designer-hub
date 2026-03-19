@@ -8,7 +8,7 @@ Internal design team daily reporting and performance tracking app.
 | **Framework** | Next.js 14 (App Router), TypeScript |
 | **DB/Auth/Storage** | Supabase |
 | **UI** | Tailwind + shadcn/ui, Recharts |
-| **Deploy** | Vercel |
+| **Deploy** | Cloudflare Pages |
 
 ## Features
 - **Submit** (`/submit`) — designers upload daily assets (images & videos)

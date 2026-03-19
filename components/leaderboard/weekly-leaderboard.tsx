@@ -2,12 +2,12 @@
 
 import { useState, useRef, useCallback } from 'react'
 import { format, getISOWeek } from 'date-fns'
-import { Download, EyeOff, ScissorsLineDashed } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
 import { DayLeaderboardTable } from './day-leaderboard-table'
 import { WeeklyWinnerTable } from './weekly-winner-table'
 import { DesignerGalleryDialog } from './designer-gallery-dialog'
+import { DownloadMenu } from './download-menu'
+import { HorseRaceChart } from './horse-race-chart'
 import type { LeaderboardEntry } from '@/lib/types/database'
 
 interface WeekDay {
@@ -84,92 +84,11 @@ export function WeeklyLeaderboard({
     openGallery(userId, designerName, weekStartDate, weekEndDate)
   }, [openGallery, weekStartDate, weekEndDate])
 
-  const handleDownload = useCallback(async () => {
-    if (!listRef.current) return
-    try {
-      const htmlToImage = await import('html-to-image')
-      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const link = document.createElement('a')
-      link.download = `leaderboard-${activeTab}-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download leaderboard image:', error)
-    }
-  }, [activeTab])
-
-  const handleAnonymousDownload = useCallback(async () => {
-    if (!listRef.current) return
-    const rows = listRef.current.querySelectorAll<HTMLElement>('[data-rank]')
-    const totalRows = rows.length
-    const blurFrom = Math.ceil(totalRows / 2)
-    const blurred: { el: HTMLElement; prev: string }[] = []
-
-    rows.forEach((row, index) => {
-      if (index >= blurFrom) {
-        row.querySelectorAll<HTMLElement>('[data-anon="blur"]').forEach((el) => {
-          blurred.push({ el, prev: el.style.filter })
-          el.style.filter = 'blur(12px)'
-        })
-      }
-    })
-
-    try {
-      const htmlToImage = await import('html-to-image')
-      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const link = document.createElement('a')
-      link.download = `leaderboard-anon-${activeTab}-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download anonymous leaderboard image:', error)
-    } finally {
-      blurred.forEach(({ el, prev }) => { el.style.filter = prev })
-    }
-  }, [activeTab])
-
-  const handleTopHalfDownload = useCallback(async () => {
-    if (!listRef.current) return
-    const rows = listRef.current.querySelectorAll<HTMLElement>('[data-rank]')
-    const totalRows = rows.length
-    const hideFrom = Math.ceil(totalRows / 2)
-    const hidden: { el: HTMLElement; prev: string }[] = []
-
-    rows.forEach((row, index) => {
-      if (index >= hideFrom) {
-        hidden.push({ el: row, prev: row.style.display })
-        row.style.display = 'none'
-      }
-    })
-
-    try {
-      const htmlToImage = await import('html-to-image')
-      const dataUrl = await htmlToImage.toPng(listRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const link = document.createElement('a')
-      link.download = `leaderboard-top-half-${activeTab}-${new Date().toISOString().split('T')[0]}.png`
-      link.href = dataUrl
-      link.click()
-    } catch (error) {
-      console.error('Failed to download top-half leaderboard image:', error)
-    } finally {
-      hidden.forEach(({ el, prev }) => { el.style.display = prev })
-    }
-  }, [activeTab])
-
   return (
     <div className="space-y-6">
       {isAdmin && (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleAnonymousDownload} title="Download with non-podium rows blurred">
-            <EyeOff className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleTopHalfDownload} title="Download top half only">
-            <ScissorsLineDashed className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4 mr-2" />
-            Download
-          </Button>
+        <div className="flex justify-end">
+          <DownloadMenu listRef={listRef} filePrefix={`leaderboard-${activeTab}`} />
         </div>
       )}
 
@@ -189,7 +108,7 @@ export function WeeklyLeaderboard({
                   {day.label}
                 </TabsTrigger>
               ))}
-              <TabsTrigger value="ww">WW</TabsTrigger>
+              <TabsTrigger value="ww">Weekly Total</TabsTrigger>
             </TabsList>
           </div>
 
@@ -204,6 +123,9 @@ export function WeeklyLeaderboard({
           ))}
 
           <TabsContent value="ww" className="mt-0">
+            <div className="p-4 sm:p-6 space-y-6">
+              <HorseRaceChart weekDays={weekDays} weeklyEntries={weeklyEntries} />
+            </div>
             <WeeklyWinnerTable
               entries={weeklyEntries}
               onAssetClick={handleWeekAssetClick}
