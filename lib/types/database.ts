@@ -96,6 +96,35 @@ export type Database = {
           created_at?: string
         }
       }
+      asset_reviews: {
+        Row: {
+          id: string
+          asset_id: string
+          reviewer_id: string
+          stars: number
+          comment: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          asset_id: string
+          reviewer_id: string
+          stars: number
+          comment?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          asset_id?: string
+          reviewer_id?: string
+          stars?: number
+          comment?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       ratings: {
         Row: {
           id: string

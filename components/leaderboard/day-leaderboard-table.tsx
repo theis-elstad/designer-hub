@@ -1,6 +1,6 @@
 'use client'
 
-import { Medal } from 'lucide-react'
+import { Medal, Images } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { cn, getAvatarUrl } from '@/lib/utils'
@@ -40,6 +40,7 @@ export function DayLeaderboardTable({ entries, date, onAssetClick }: DayLeaderbo
         <div className="w-8 shrink-0" />
         <div className="w-9 shrink-0" />
         <div className="flex-1 min-w-0">Name</div>
+        <div className="w-14 text-center shrink-0">Assets</div>
         <div className="w-14 text-center shrink-0">Statics</div>
         <div className="w-14 text-center shrink-0">Videos</div>
         <div className="w-20 text-center shrink-0">Productivity</div>
@@ -78,24 +79,25 @@ export function DayLeaderboardTable({ entries, date, onAssetClick }: DayLeaderbo
                 </p>
               </div>
 
-              {/* Statics - clickable */}
+              {/* Assets - view gallery */}
               <div className="w-14 text-center shrink-0">
                 <button
                   onClick={() => onAssetClick?.(entry.user_id, entry.full_name || 'Unknown')}
-                  className="text-sm text-gray-600 hover:text-blue-600 hover:underline cursor-pointer"
+                  className="inline-flex items-center justify-center text-gray-400 hover:text-blue-600 cursor-pointer transition-colors"
+                  title={`View ${entry.full_name}'s assets`}
                 >
-                  {entry.static_count || 0}
+                  <Images className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Videos - clickable */}
+              {/* Statics */}
               <div className="w-14 text-center shrink-0">
-                <button
-                  onClick={() => onAssetClick?.(entry.user_id, entry.full_name || 'Unknown')}
-                  className="text-sm text-gray-600 hover:text-blue-600 hover:underline cursor-pointer"
-                >
-                  {entry.video_count || 0}
-                </button>
+                <span className="text-sm text-gray-600">{entry.static_count || 0}</span>
+              </div>
+
+              {/* Videos */}
+              <div className="w-14 text-center shrink-0">
+                <span className="text-sm text-gray-600">{entry.video_count || 0}</span>
               </div>
 
               {/* Productivity */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { format, getISOWeek } from 'date-fns'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DayLeaderboardTable } from './day-leaderboard-table'
@@ -62,16 +62,14 @@ export function WeeklyLeaderboard({
   const [galleryStartDate, setGalleryStartDate] = useState('')
   const [galleryEndDate, setGalleryEndDate] = useState('')
 
-  // Default tab: most recent day with entries, or 'ww'
-  const defaultTab = (() => {
-    for (let i = weekDays.length - 1; i >= 0; i--) {
-      if (weekDays[i].entries.length > 0) return weekDays[i].date
-    }
-    return 'ww'
-  })()
+  const [listTab, setListTab] = useState('ww')
+  const [matrixTab, setMatrixTab] = useState('ww')
 
-  const [listTab, setListTab] = useState(defaultTab)
-  const [matrixTab, setMatrixTab] = useState(defaultTab)
+  // Reset to Weekly Total when week changes
+  useEffect(() => {
+    setListTab('ww')
+    setMatrixTab('ww')
+  }, [weekOffset])
 
   const openGallery = useCallback((userId: string, designerName: string, startDate: string, endDate: string) => {
     setGalleryUserId(userId)
