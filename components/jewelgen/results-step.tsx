@@ -13,6 +13,7 @@ interface ResultsStepProps {
   results: ResultOutput[]
   onEdit: (base64: string, mimeType: string, comment: string) => Promise<void>
   onStartOver: () => void
+  onGenerateMore: () => void
   error?: string
 }
 
@@ -20,6 +21,7 @@ export function ResultsStep({
   results,
   onEdit,
   onStartOver,
+  onGenerateMore,
   error,
 }: ResultsStepProps) {
   return (
@@ -60,9 +62,12 @@ export function ResultsStep({
         </div>
       )}
 
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-3">
         <Button variant="outline" onClick={onStartOver}>
           Start Over
+        </Button>
+        <Button onClick={onGenerateMore}>
+          Generate More
         </Button>
       </div>
     </div>

@@ -12,16 +12,17 @@ const STEPS = [
 
 interface StepIndicatorProps {
   currentStep: number
+  hasResults?: boolean
   onStepClick?: (step: number) => void
 }
 
-export function StepIndicator({ currentStep, onStepClick }: StepIndicatorProps) {
+export function StepIndicator({ currentStep, hasResults, onStepClick }: StepIndicatorProps) {
   return (
     <div className="flex items-center justify-center gap-2">
       {STEPS.map((step, i) => {
-        const isComplete = currentStep > step.number
+        const isComplete = currentStep > step.number || (step.number === 4 && hasResults)
         const isCurrent = currentStep === step.number
-        const isClickable = onStepClick && step.number < currentStep
+        const isClickable = onStepClick && (step.number < currentStep || (step.number === 4 && hasResults && currentStep !== 4))
 
         return (
           <div key={step.number} className="flex items-center gap-2">

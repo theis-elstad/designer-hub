@@ -79,7 +79,7 @@ export default function JewelGenNewPage() {
         return
       }
 
-      setResults(data.outputs)
+      setResults((prev) => [...data.outputs, ...prev])
       setStep(4)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed')
@@ -159,8 +159,10 @@ export default function JewelGenNewPage() {
 
       <StepIndicator
         currentStep={step}
+        hasResults={results.length > 0}
         onStepClick={(s) => {
           if (s < step) setStep(s)
+          if (s === 4 && results.length > 0) setStep(4)
         }}
       />
 
@@ -196,6 +198,7 @@ export default function JewelGenNewPage() {
           results={results}
           onEdit={handleEdit}
           onStartOver={handleStartOver}
+          onGenerateMore={() => setStep(3)}
           error={error}
         />
       )}
