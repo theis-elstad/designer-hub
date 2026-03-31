@@ -13,11 +13,12 @@ function getClient(): Anthropic {
 
 export async function generateAISummary(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  maxTokens = 1024
 ): Promise<string> {
   const message = await getClient().messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
+    max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   })
