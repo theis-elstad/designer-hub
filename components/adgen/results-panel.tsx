@@ -21,7 +21,7 @@ function PlaceholderCard({ creative }: { creative: GeneratedCreative }) {
   const failed = creative._failed
   return (
     <div className="overflow-hidden rounded-xl border bg-white">
-      <div className="aspect-square max-h-[400px] bg-gray-50 flex flex-col items-center justify-center gap-3">
+      <div className="aspect-square bg-gray-50 flex flex-col items-center justify-center gap-3">
         {failed ? (
           <>
             <AlertCircle className="h-8 w-8 text-destructive/60" />
@@ -78,7 +78,7 @@ export function ResultsPanel({
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
         {creatives.map((creative, idx) =>
           creative._generating || creative._failed ? (
             <PlaceholderCard key={creative.id} creative={creative} />

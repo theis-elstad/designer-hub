@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Pencil, Check, X, Building2, Package, ChevronDown, Loader2, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ interface SettingsStepProps {
   onRemoveProductImage?: (src: string) => void
   urlType?: UrlType
   researchLoading?: boolean
+  hasResults?: boolean
 }
 
 function SegmentedControl<T extends string | number>({
@@ -266,13 +267,21 @@ export function SettingsStep({
   onRemoveProductImage,
   urlType = 'product',
   researchLoading = false,
+  hasResults = false,
 }: SettingsStepProps) {
+  const [imagesExpanded, setImagesExpanded] = useState(!hasResults)
+
+  // Collapse images when results appear
+  useEffect(() => {
+    if (hasResults) setImagesExpanded(false)
+  }, [hasResults])
   const isBrandOnly = urlType === 'brand'
   const hasProductRef = selectedImages.some(
     (s) => s.label === 'product-reference'
   )
   // Brand-only URLs don't require product reference images
-  const canGenerate = isBrandOnly || (selectedImages.length > 0 && hasProductRef)
+  const imagesReady = isBrandOnly || (selectedImages.length > 0 && hasProductRef)
+  const canGenerate = imagesReady && !researchLoading
 
   const researchLabel = urlType === 'collection' ? 'collection' : 'product'
 
@@ -303,17 +312,35 @@ export function SettingsStep({
 
       {/* Image selection */}
       <div>
-        <h2 className="text-lg font-semibold">Reference Images</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Select product photos and inspiration images for the AI.
-        </p>
-        <ImageSelector
-          productImages={productImages}
-          productTitle={productTitle}
-          selectedImages={selectedImages}
-          onSelectedImages={onSelectedImages}
-          onRemoveProductImage={onRemoveProductImage}
-        />
+        <button
+          type="button"
+          onClick={() => setImagesExpanded(!imagesExpanded)}
+          className="flex w-full items-center justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Reference Images</h2>
+            {!imagesExpanded && selectedImages.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
+              </p>
+            )}
+          </div>
+          <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', imagesExpanded && 'rotate-180')} />
+        </button>
+        {imagesExpanded && (
+          <>
+            <p className="text-sm text-muted-foreground mb-4 mt-1">
+              Select product photos and inspiration images for the AI.
+            </p>
+            <ImageSelector
+              productImages={productImages}
+              productTitle={productTitle}
+              selectedImages={selectedImages}
+              onSelectedImages={onSelectedImages}
+              onRemoveProductImage={onRemoveProductImage}
+            />
+          </>
+        )}
       </div>
 
       {/* Generation settings */}

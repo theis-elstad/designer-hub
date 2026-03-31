@@ -72,31 +72,27 @@ export default function AdGenPage() {
     setResearchLoading(true)
 
     try {
-      // Always fetch brand research + images
-      const fetches: Promise<Record<string, any>>[] = [
-        safeFetch('/api/adgen/brand-research', { brandUrl: submittedUrl }),
-        safeFetch('/api/adgen/fetch-images', { url: submittedUrl }),
-      ]
+      // Fire all fetches in parallel, update state as each resolves
+      const imagesFetch = safeFetch('/api/adgen/fetch-images', { url: submittedUrl })
+        .then((res) => {
+          setProductImages((res.images || []) as ProductImageData[])
+          setProductTitle((res.title as string) || null)
+        })
 
-      // Fetch product/collection research for non-brand URLs
-      if (detectedType !== 'brand') {
-        fetches.push(safeFetch('/api/adgen/product-research', { productUrl: submittedUrl }))
-      }
+      const brandFetch = safeFetch('/api/adgen/brand-research', { brandUrl: submittedUrl })
+        .then((res) => {
+          setBrandResearch(res.research as BrandResearch)
+          if (res.cached) toast.info('Using cached brand research')
+        })
 
-      const results = await Promise.all(fetches)
-      const brandRes = results[0]
-      const imagesRes = results[1]
-      const productRes = results[2] // undefined for brand URLs
+      const productFetch = detectedType !== 'brand'
+        ? safeFetch('/api/adgen/product-research', { productUrl: submittedUrl })
+            .then((res) => {
+              setProductResearch(res.research as ProductResearch)
+            })
+        : Promise.resolve()
 
-      setBrandResearch(brandRes.research as BrandResearch)
-      setProductImages((imagesRes.images || []) as ProductImageData[])
-      setProductTitle((imagesRes.title as string) || null)
-
-      if (productRes) {
-        setProductResearch(productRes.research as ProductResearch)
-      }
-
-      if (brandRes.cached) toast.info('Using cached brand research')
+      await Promise.all([imagesFetch, brandFetch, productFetch])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load data')
       setStep('url')
@@ -158,46 +154,49 @@ export default function AdGenPage() {
       // Show all placeholders at once
       setCreatives((prev) => [...placeholders, ...prev])
 
-      // Generate each creative and replace placeholder
-      let count = 0
-      for (const placeholder of placeholders) {
-        count++
-        setProgress(`Generating creative ${count}/${total}...`)
+      // Generate all creatives in parallel
+      setProgress(`Generating ${total} creative${total > 1 ? 's' : ''}...`)
+      let completed = 0
 
-        try {
-          const res = await safeFetch('/api/adgen/ad-creative', {
-            adIdea: placeholder.idea,
-            brandResearch,
-            productResearch,
-            images: imagePayload,
-            format: settings.format,
-          })
+      await Promise.all(
+        placeholders.map(async (placeholder) => {
+          try {
+            const res = await safeFetch('/api/adgen/ad-creative', {
+              adIdea: placeholder.idea,
+              brandResearch,
+              productResearch,
+              images: imagePayload,
+              format: settings.format,
+            })
 
-          setCreatives((prev) =>
-            prev.map((c) =>
-              c.id === placeholder.id
-                ? {
-                    ...c,
-                    imageBase64: res.imageBase64 as string,
-                    mimeType: res.mimeType as string,
-                    imagePrompt: res.imagePrompt as string,
-                    _generating: false,
-                  }
-                : c
+            setCreatives((prev) =>
+              prev.map((c) =>
+                c.id === placeholder.id
+                  ? {
+                      ...c,
+                      imageBase64: res.imageBase64 as string,
+                      mimeType: res.mimeType as string,
+                      imagePrompt: res.imagePrompt as string,
+                      _generating: false,
+                    }
+                  : c
+              )
             )
-          )
-        } catch (err) {
-          // Mark this placeholder as failed but continue with others
-          setCreatives((prev) =>
-            prev.map((c) =>
-              c.id === placeholder.id
-                ? { ...c, _generating: false, _failed: true }
-                : c
+          } catch (err) {
+            setCreatives((prev) =>
+              prev.map((c) =>
+                c.id === placeholder.id
+                  ? { ...c, _generating: false, _failed: true }
+                  : c
+              )
             )
-          )
-          console.error(`Creative ${count} failed:`, err)
-        }
-      }
+            console.error(`Creative failed:`, err)
+          } finally {
+            completed++
+            setProgress(`Generated ${completed}/${total} creatives...`)
+          }
+        })
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Generation failed')
     } finally {
@@ -304,7 +303,7 @@ export default function AdGenPage() {
   }, [])
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
+    <div className="mx-auto max-w-3xl space-y-8 px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -348,6 +347,7 @@ export default function AdGenPage() {
           onRemoveProductImage={handleRemoveProductImage}
           urlType={urlType}
           researchLoading={researchLoading}
+          hasResults={step === 'results'}
         />
       )}
 

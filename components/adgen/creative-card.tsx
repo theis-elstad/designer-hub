@@ -94,7 +94,7 @@ export function CreativeCard({
   return (
     <div className="overflow-hidden rounded-xl border bg-white">
       {/* Image */}
-      <div className="aspect-square max-h-[400px] bg-gray-50">
+      <div className="aspect-square bg-gray-50">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`data:${creative.mimeType};base64,${creative.imageBase64}`}
