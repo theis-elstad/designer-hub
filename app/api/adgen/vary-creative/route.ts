@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { callGemini, imagePartFromBase64, textPart } from '@/lib/gemini'
+import { getSystemPrompt } from '@/lib/prompts'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -24,11 +25,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    const variationPrompt = await getSystemPrompt(
+      'variation',
+      'Create a variation of this ad creative. Keep the same general concept, product, and style but vary the composition, lighting, angle, or mood to create a fresh take.'
+    )
     const parts = [
       imagePartFromBase64(imageBase64, mimeType || 'image/jpeg'),
-      textPart(
-        'Create a variation of this ad creative. Keep the same general concept, product, and style but vary the composition, lighting, angle, or mood to create a fresh take.'
-      ),
+      textPart(variationPrompt),
     ]
 
     const images = await callGemini(parts, {

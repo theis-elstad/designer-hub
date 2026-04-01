@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 
 const SUGGESTIONS_SYSTEM = `You are a world-class marketing analyst and consumer psychologist.
 Given a brand and optionally a product/collection, identify 3 distinct buyer archetypes that represent genuinely different customer segments.
@@ -51,7 +52,8 @@ Target Customer: ${productResearch.targetCustomer || 'Unknown'}
 Key Benefits: ${Array.isArray(productResearch.keyBenefits) ? (productResearch.keyBenefits as string[]).join(', ') : 'Unknown'}`
     }
 
-    const raw = await generateAISummary(SUGGESTIONS_SYSTEM, userPrompt, 1024)
+    const suggestionsSystem = await getSystemPrompt('avatar-suggestions', SUGGESTIONS_SYSTEM)
+    const raw = await generateAISummary(suggestionsSystem, userPrompt, 1024)
 
     let suggestions: unknown[]
     try {

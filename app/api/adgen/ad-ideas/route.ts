@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 
 // Shuffle array in-place (Fisher-Yates)
 function shuffle<T>(arr: T[]): T[] {
@@ -93,7 +94,8 @@ ${JSON.stringify(brandResearch, null, 2)}
 PRODUCT CONTEXT:
 ${JSON.stringify(productResearch, null, 2)}`
 
-    const raw = await generateAISummary(AD_IDEAS_SYSTEM, userPrompt)
+    const adIdeasSystem = await getSystemPrompt('ad-ideas', AD_IDEAS_SYSTEM)
+    const raw = await generateAISummary(adIdeasSystem, userPrompt)
 
     let ideas: unknown[]
     try {

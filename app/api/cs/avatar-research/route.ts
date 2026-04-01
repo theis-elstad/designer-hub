@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 
 const DEEP_RESEARCH_SYSTEM = `Today, you are a world-class marketing analyst and consumer psychologist.
 Your mission: to uncover the deep emotional, psychological, and behavioral drivers that motivate our ideal customer to purchase this specific product or service.
@@ -120,7 +121,8 @@ Key Benefits: ${Array.isArray(productResearch.keyBenefits) ? (productResearch.ke
 Pain Points Solved: ${Array.isArray(productResearch.painPointsSolved) ? (productResearch.painPointsSolved as string[]).join(', ') : 'Unknown'}
 Emotional Triggers: ${Array.isArray(productResearch.emotionalTriggers) ? (productResearch.emotionalTriggers as string[]).join(', ') : 'Unknown'}` : ''}`
 
-    const raw = await generateAISummary(DEEP_RESEARCH_SYSTEM, userPrompt, 8192)
+    const deepResearchSystem = await getSystemPrompt('avatar-deep-research', DEEP_RESEARCH_SYSTEM)
+    const raw = await generateAISummary(deepResearchSystem, userPrompt, 8192)
 
     let research: Record<string, unknown>
     try {

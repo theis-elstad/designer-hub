@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 
 function extractDomain(url: string): string {
   try {
@@ -85,7 +86,8 @@ export async function POST(request: Request) {
       ? `Analyze this brand: ${domain}\n\nWebsite content:\n${pageContent}`
       : `Analyze this brand based on your knowledge: ${domain}`
 
-    const raw = await generateAISummary(BRAND_RESEARCH_SYSTEM, userPrompt)
+    const systemPrompt = await getSystemPrompt('brand-research', BRAND_RESEARCH_SYSTEM)
+    const raw = await generateAISummary(systemPrompt, userPrompt)
 
     let research: Record<string, unknown>
     try {

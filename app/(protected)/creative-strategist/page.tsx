@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Wand2, ChevronDown, Loader2, X, Pencil, Globe, Plus } from 'lucide-react'
+import { Wand2, ChevronDown, Loader2, X, Pencil, Globe, Plus, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,6 +13,7 @@ import { ResearchCard } from '@/components/shared/research-card'
 import { SegmentedControl } from '@/components/shared/segmented-control'
 import { ImageSelector } from '@/components/adgen/image-selector'
 import { ResultsPanel } from '@/components/adgen/results-panel'
+import { PromptSettingsModal } from '@/components/creative-strategist/prompt-settings-modal'
 import type { BrandResearch, ProductResearch, SelectedImage, GeneratedCreative, AdIdea } from '@/lib/types/adgen'
 import type { CSBrand, CSProduct, CSAvatar, AvatarResearch, AvatarSuggestion } from '@/lib/types/creative-strategist'
 
@@ -705,15 +706,26 @@ export default function CreativeStrategistPage() {
   const canGenerate = brandReady && productReady && !generating
   const showSettings = brandReady && productReady
   const [settingsCollapsed, setSettingsCollapsed] = useState(false)
+  const [promptSettingsOpen, setPromptSettingsOpen] = useState(false)
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
           <Wand2 className="h-6 w-6" /> Creative Strategist
         </h1>
+        <button
+          type="button"
+          onClick={() => setPromptSettingsOpen(true)}
+          className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title="Prompt Settings"
+        >
+          <Settings className="h-5 w-5" />
+        </button>
       </div>
+
+      <PromptSettingsModal open={promptSettingsOpen} onClose={() => setPromptSettingsOpen(false)} />
 
       {/* Selection rows */}
       <div className="space-y-1 mb-6">

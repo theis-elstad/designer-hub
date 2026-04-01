@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 import { callGemini, imagePartFromBase64, textPart } from '@/lib/gemini'
 import type { ImageLabel } from '@/lib/types/adgen'
 
@@ -105,7 +106,8 @@ Type: ${productResearch.productType}
 
 HEADLINE: ${adIdea.headline ?? ''}`
 
-    const imagePrompt = await generateAISummary(IMAGE_PROMPT_SYSTEM, imagePromptRequest)
+    const imagePromptSystem = await getSystemPrompt('image-prompt', IMAGE_PROMPT_SYSTEM)
+    const imagePrompt = await generateAISummary(imagePromptSystem, imagePromptRequest)
 
     // Step 2: Build Gemini parts — reference images first, then text prompt
     const geminiParts = []

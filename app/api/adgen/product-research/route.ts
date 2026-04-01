@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateAISummary } from '@/lib/ai'
+import { getSystemPrompt } from '@/lib/prompts'
 
 interface ShopifyProduct {
   title: string
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
 
     const { kind, domain, handle } = classifyUrl(productUrl)
     let context = ''
-    let systemPrompt = PRODUCT_RESEARCH_SYSTEM
+    let systemPrompt = await getSystemPrompt('product-research', PRODUCT_RESEARCH_SYSTEM)
 
     if (kind === 'product' && handle) {
       // ── Single product ──
@@ -170,7 +171,7 @@ Description: ${description}`
       }
     } else if (kind === 'collection' && handle) {
       // ── Collection ──
-      systemPrompt = COLLECTION_RESEARCH_SYSTEM
+      systemPrompt = await getSystemPrompt('collection-research', COLLECTION_RESEARCH_SYSTEM)
       const { collection, products } = await fetchShopifyCollection(domain, handle)
 
       const parts: string[] = []
