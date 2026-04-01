@@ -578,7 +578,7 @@ export default function CreativeStrategistPage() {
   const handleGenerate = useCallback(async () => {
     if (!brandResearch || !productResearch) return
     setGenerating(true)
-    setCreatives([])
+    setSettingsCollapsed(true)
 
     try {
       const imagePayload = selectedImages.map((img) => ({
@@ -602,7 +602,7 @@ export default function CreativeStrategistPage() {
       const allPlaceholders = allPlaceholderSets.flat()
       const total = allPlaceholders.length
 
-      setCreatives(allPlaceholders)
+      setCreatives((prev) => [...prev, ...allPlaceholders])
       setProgress(`Generating ${total} creatives...`)
       let completed = 0
 
@@ -703,6 +703,8 @@ export default function CreativeStrategistPage() {
   const brandReady = brand !== null && brandResearch !== null
   const productReady = product !== null && productResearch !== null
   const canGenerate = brandReady && productReady && !generating
+  const showSettings = brandReady && productReady
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false)
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -963,8 +965,17 @@ export default function CreativeStrategistPage() {
       </div>
 
       {/* ─── Generation settings ─── */}
-      {canGenerate && (
-        <div className="space-y-4 rounded-lg border bg-white p-4">
+      {showSettings && (
+        <div className="rounded-lg border bg-white">
+          <button
+            type="button"
+            onClick={() => setSettingsCollapsed(!settingsCollapsed)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-xs font-medium text-muted-foreground">Generation Settings</span>
+            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', !settingsCollapsed && 'rotate-180')} />
+          </button>
+          {!settingsCollapsed && <div className="space-y-4 px-4 pb-4">
           <div>
             <h3 className="text-xs font-medium text-muted-foreground mb-2">Reference Images</h3>
             <ImageSelector
@@ -1025,6 +1036,7 @@ export default function CreativeStrategistPage() {
               : `Generate ${ideaCount * formats.length * Math.max(1, selectedAvatars.length)} Creatives`
             }
           </Button>
+          </div>}
         </div>
       )}
 
