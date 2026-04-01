@@ -75,24 +75,28 @@ export async function POST(request: Request) {
       count?: number
     }
 
-    if (!brandResearch || !productResearch) {
-      return NextResponse.json({ error: 'brandResearch and productResearch are required' }, { status: 400 })
+    if (!brandResearch) {
+      return NextResponse.json({ error: 'brandResearch is required' }, { status: 400 })
     }
 
     // Shuffle desires and heuristics for variety across runs
     const desires = shuffle(CORE_DESIRES).slice(0, 8).join(', ')
     const heuristics = shuffle(HEURISTICS).slice(0, 6).join(', ')
 
-    const userPrompt = `Generate ${count} ad concepts for this product.
+    let userPrompt = `Generate ${count} ad concepts for this ${productResearch ? 'product' : 'brand'}.
 
 CORE DESIRES to draw from (pick the most relevant): ${desires}
 HEURISTICS to apply: ${heuristics}
 
 BRAND CONTEXT:
-${JSON.stringify(brandResearch, null, 2)}
+${JSON.stringify(brandResearch, null, 2)}`
+
+    if (productResearch) {
+      userPrompt += `
 
 PRODUCT CONTEXT:
 ${JSON.stringify(productResearch, null, 2)}`
+    }
 
     const adIdeasSystem = await getSystemPrompt('ad-ideas', AD_IDEAS_SYSTEM)
     const raw = await generateAISummary(adIdeasSystem, userPrompt)

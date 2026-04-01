@@ -77,17 +77,17 @@ export async function POST(request: Request) {
       format?: string
     }
 
-    if (!adIdea || !brandResearch || !productResearch) {
+    if (!adIdea || !brandResearch) {
       return NextResponse.json(
-        { error: 'adIdea, brandResearch, and productResearch are required' },
-        { status: 500 }
+        { error: 'adIdea and brandResearch are required' },
+        { status: 400 }
       )
     }
 
     const aspectRatio = format || '1:1'
 
     // Step 1: Generate image prompt via Claude
-    const imagePromptRequest = `Create an image generation prompt for this ad creative:
+    let imagePromptRequest = `Create an image generation prompt for this ad creative:
 
 AD CONCEPT:
 Title: ${adIdea.title}
@@ -98,11 +98,17 @@ Format: ${aspectRatio} aspect ratio
 BRAND:
 Name: ${brandResearch.brandName}
 Voice: ${brandResearch.brandVoice}
-Personality: ${Array.isArray(brandResearch.brandPersonality) ? (brandResearch.brandPersonality as string[]).join(', ') : ''}
+Personality: ${Array.isArray(brandResearch.brandPersonality) ? (brandResearch.brandPersonality as string[]).join(', ') : ''}`
+
+    if (productResearch) {
+      imagePromptRequest += `
 
 PRODUCT:
 Name: ${productResearch.productName}
-Type: ${productResearch.productType}
+Type: ${productResearch.productType}`
+    }
+
+    imagePromptRequest += `
 
 HEADLINE: ${adIdea.headline ?? ''}`
 
